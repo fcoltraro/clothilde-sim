@@ -1,0 +1,12 @@
+__pycache__/
+**/images/
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+.polyscope.ini
+frames/
+python_code/movies/imgui.ini
+python_code/movies/output.mp4
+python_code/movies/imgui.ini
+python_code/movies/imgui.ini

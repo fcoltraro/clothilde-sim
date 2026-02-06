@@ -1,0 +1,8 @@
+# Step 1: Create a new conda environment with the required packages
+conda create -n cloth_env -c conda-forge python=3.11 suitesparse scikit-sparse scipy numpy pykdtree
+
+# Step 2: Activate the conda environment
+conda activate cloth_env
+
+# Step 3: Install the rest with pip
+pip install polyscope line_profiler
