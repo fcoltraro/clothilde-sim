@@ -14,19 +14,23 @@ The simulator has been used and validated in the context of **dynamic textile ma
 
 ## 1. Installation
 
+We recomend using the conda package and a conda enviroment for simulation (especially in Mac and Windows systems). 
+
 ### 1.1 Requirements
 
-The simulator is natively implemented in Python (>=3.11) and relies on the following computing libraries: Numpy, Scipy, CHOLMOD, pykdtree. Visualization is done by polyscope and profiling by line_profiler.
+The simulator is natively implemented in Python (>=3.11) and relies on the following computing libraries: Numpy, Scipy, scikit-sparse, CHOLMOD and pykdtree. Visualization is done by Polyscope and profiling by line_profiler.
 
 ### 1.2 Installation Steps
 
-#### Step 0: Clone the repository and install miniconda
+#### Step 0: Clone the repository 
+git clone https://github.com/fcoltraro/clothilde-sim.git
+cd clothilde
 
 #### Step 1: Create a new conda environment with the required packages
-conda create -n cloth_env -c conda-forge python=3.11 suitesparse scikit-sparse scipy numpy pykdtree
+conda create -n clothilde_env -c conda-forge python=3.11 suitesparse scikit-sparse scipy numpy pykdtree
 
 #### Step 2: Activate the conda environment
-conda activate cloth_env
+conda activate clothilde_env
 
 #### Step 3: Install the rest with pip
 pip install polyscope line_profiler
