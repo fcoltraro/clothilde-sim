@@ -23,18 +23,22 @@ The simulator is natively implemented in Python (>=3.11) and relies on the follo
 ### 1.2 Installation Steps
 
 #### Step 0: Clone the repository 
+```
 git clone https://github.com/fcoltraro/clothilde-sim.git
 cd clothilde
-
+```
 #### Step 1: Create a new conda environment with the required packages
+```
 conda create -n clothilde_env -c conda-forge python=3.11 suitesparse scikit-sparse scipy numpy pykdtree
-
+```
 #### Step 2: Activate the conda environment
+```
 conda activate clothilde_env
-
+```
 #### Step 3: Install the rest with pip
+```
 pip install polyscope line_profiler
-
+```
 ---
 
 ## 2. High-Level Design
