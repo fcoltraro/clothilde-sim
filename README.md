@@ -45,17 +45,10 @@ pip install polyscope line_profiler
 
 The simulator follows a **state–update paradigm** tailored for control:
 
-* The cloth is represented as a discrete mesh (nodes + connectivity)
-* Dynamics are advanced using an implicit time integrator
-* External actions (robot grasps, motions, constraints) enter as boundary conditions or forces
-
-At each simulation step:
-
-1. Boundary conditions and control inputs are applied
-2. Internal forces (elastic, damping, aerodynamic) are computed
-3. A constrained system is solved to obtain the next state
-
-The design explicitly avoids black-box solvers in favor of transparent and differentiable components.
+* The cloth is represented as a discrete mesh (a nodes matrix X + quad connectivity T)
+* Dynamics are advanced a time step dt using a custom implicit time integrator
+* External actions, i.e. _grasping and control_ enter as boundary conditions, that is (pin) equality constraints
+* Inextensibility and contacts are modeled as hard equality and inequality constraints respectively
 
 ---
 
