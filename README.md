@@ -1,13 +1,14 @@
 # Clothilde simulator: accurate physical simulation of textiles 
 
-This repository contains a cloth simulation framework specifically designed for **robotics and control** tasks. The simulator prioritizes:
+This repository contains a cloth simulator specifically designed for **robotics and control** tasks. The simulator prioritizes:
 
-* Inelastic limit: the simulator is able to simulate (quasi)-inextensible fabrics efficiently. 
-* Stability and robustness: no jittering and stable contact and friction behaviour. 
-* Physical consistency: the simulator is very stable under various remeshings of the cloth.
-* Easy of use and modularity: just a few lines of Python code are enough.
+* _Inelastic limit_: the simulator is able to simulate (quasi)-inextensible fabrics efficiently.
+* _Aerodynamic effects_: interaction with the air can be incorporated (even in the absence of wind).
+* _Stability and robustness_: no jittering and stable contact and friction behaviour. 
+* _Physical consistency_: the simulator is very stable under various remeshings of the cloth.
+* _Easy of use and modularity_: just a few lines of Python code are enough to start simulating.
 
-The simulator has been used and validated in the context of **dynamic textile manipulation** by robots, including aerodynamic effects.
+The simulator has been used and validated in the context of **dynamic textile manipulation** by robots, showcasing its realism when compared with real recordings of various textiles.
 
 ---
 
@@ -15,36 +16,20 @@ The simulator has been used and validated in the context of **dynamic textile ma
 
 ### 1.1 Requirements
 
-The simulator is implemented in Python and relies on standard scientific computing libraries:
-
-* Python >= 3.11
-* NumPy
-* SciPy
-* OSQP (used for constrained optimization and implicit solves)
+The simulator is natively implemented in Python (>=3.11) and relies on the following computing libraries: Numpy, Scipy, CHOLMOD, pykdtree. Visualization is done by polyscope and profiling by line_profiler.
 
 ### 1.2 Installation Steps
 
-Clone the repository:
+#### Step 0: Clone the repository and install miniconda
 
-```bash
-git clone https://github.com/<username>/<repo>.git
-cd <repo>
-```
+#### Step 1: Create a new conda environment with the required packages
+conda create -n cloth_env -c conda-forge python=3.11 suitesparse scikit-sparse scipy numpy pykdtree
 
-Create a virtual environment (recommended):
+#### Step 2: Activate the conda environment
+conda activate cloth_env
 
-```bash
-python -m venv venv
-source venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-No compilation step is required.
+#### Step 3: Install the rest with pip
+pip install polyscope line_profiler
 
 ---
 
