@@ -1,8 +1,8 @@
 # Clothilde simulator: accurate physical simulation of textiles 
 
-<video width="800" controls>
-  <source src="python_code/demo/output.mp4" type="video/mp4">
-</video>
+
+https://github.com/user-attachments/assets/00d62006-e6ad-4f0a-8ace-b711f61eee81
+
 
 This repository contains a cloth simulator specifically designed for **robotics and control** tasks. The simulator prioritizes:
 
