@@ -58,6 +58,8 @@ The simulator follows a **state–update paradigm** tailored for control:
 
 ## 3. Basic Usage
 
+For further details, see the demo and examples folder.
+
 ### 3.1 Minimal Example
 
 ```python
