@@ -1,5 +1,9 @@
 # Clothilde simulator: accurate physical simulation of textiles 
 
+
+https://github.com/user-attachments/assets/00d62006-e6ad-4f0a-8ace-b711f61eee81
+
+
 This repository contains a cloth simulator specifically designed for **robotics and control** tasks. The simulator prioritizes:
 
 * _Inelastic limit_: the simulator is able to simulate (quasi)-inextensible fabrics efficiently.
@@ -57,38 +61,38 @@ The simulator follows a **state–update paradigm** tailored for control:
 ### 3.1 Minimal Example
 
 ```python
-from cloth_simulator import Cloth, Simulator
+from implementation.Cloth import Cloth
+from implementation.utils import createRectangularMesh
 
-cloth = Cloth.from_grid(
-    nx=20,
-    ny=20,
-    dx=0.02,
-    density=0.2
-)
+# create an initial mesh
+na = 20; nb = 33
+X, T = createRectangularMesh(a = 0.5, b = 0.8, na = na, nb = nb, h = 0.2)
 
-sim = Simulator(
-    cloth=cloth,
-    dt=0.01
-)
+# call Cloth class
+clothilde = Cloth(X, T);
 
-for _ in range(200):
-    sim.step()
+#set default parameters
+dt = clothilde.estimateTimeStep(L=0.8)
+clothilde.setSimulatorParameters(dt = dt)
+
+#simulate 6 seconds fixing two corners
+tf = int(6/dt); inds = [0, na-1]; u = clothilde.positions[inds]
+for _ in range(tf):
+    clothilde.simulate(u = u, control = inds)
+
+#make a moving with the simulated frames
+clothilde.makeMovie(speed = 5, repeat = True, smooth = 2)
 ```
-
-This runs a free-fall simulation of a square cloth.
 
 ### 3.2 State Access
 
 The simulator exposes:
 
-* Node positions `x`
-* Velocities `v`
-* Forces (internal and external)
-
-This is intentional: control and estimation algorithms are expected to operate directly on these quantities.
+* Node positions `self.positions` updated every time self.simulate() is called and their history in self.history_pos 
+* Velocities `self.velocities` updated every time self.simulate() is called and their history in self.history_vel
 
 ---
-
+<!--
 ## 4. Core Inputs
 
 ### 4.1 Mesh and Topology
@@ -228,14 +232,20 @@ This simulator is **not** intended for:
 * Self-collision-heavy scenarios
 
 Its purpose is **predictive modeling for control and planning**.
-
+-->
 ---
 
 ## 11. Citation
 
 If you use this simulator in academic work, please cite:
 
-> A Practical Aerodynamic Model for Dynamic Textile Manipulation in Robotics
+> An inextensible model for the robotic manipulation of textiles
+Franco Coltraro, Jaume Amorós , Maria Alberich-Carramiñana and Carme Torras
+Applied Mathematical Modelling, 2022
+
+> A novel collision model for inextensible textiles and its experimental validation
+Franco Coltraro, Jaume Amorós , Maria Alberich-Carramiñana and Carme Torras
+Applied Mathematical Modelling, 2024
 
 ---
 
@@ -243,9 +253,11 @@ If you use this simulator in academic work, please cite:
 
 Potential directions:
 
-* Differentiable solvers
-* Contact with rigid bodies
-* Reduced-order cloth models
-* Learning-assisted parameter identification
+* Seams
+* GPU implementation
+* Complex grasps
+* Collisions with a moving obstacle (e.g. a gripper)
 
 Contributions and discussions are welcome.
+
+
