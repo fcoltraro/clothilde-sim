@@ -1001,7 +1001,7 @@ class Cloth:
         #solver variables for inextensiblity 
         n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_slf = -np.inf
 
-        while error_str > self.tol or error_shr > self.tol: #or self.error_slf < -self.tol:
+        while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
 
             #shearing
             phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
@@ -1035,6 +1035,6 @@ class Cloth:
 
         #warnings
         if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
-           print("WARNING: average of more than 4 iterations taken, for better performance reduce dt")
+           print("WARNING: average of more than 4 iterations taken, for better performance reduce dt or increase thck")
            self.warning = True
 
