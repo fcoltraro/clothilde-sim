@@ -1,4 +1,4 @@
-# Clothilde simulator: accurate physical simulation of textiles 
+# clothilde-sim: accurate physical simulation of (quasi)-inextensible textiles 
 
 
 https://github.com/user-attachments/assets/00d62006-e6ad-4f0a-8ace-b711f61eee81
@@ -12,7 +12,10 @@ This repository contains a cloth simulator specifically designed for **robotics 
 * _Physical consistency_: the simulator is very stable under various remeshings of the cloth.
 * _Easy of use and modularity_: just a few lines of Python code are enough to start simulating.
 
-The simulator has been used and validated in the context of **dynamic textile manipulation** by robots, showcasing its realism when compared with real recordings of various textiles.
+The simulator has been used and validated in the context of **dynamic textile manipulation** by robots, showcasing its realism when compared with real recordings of various textiles. For more information on robotic applications and validations, click <a href="https://fcoltraro.github.io/projects/telas/"> here</a>.
+
+
+https://github.com/user-attachments/assets/4dcf4124-d486-414f-9cc4-a79dca4d09b4
 
 ---
 
@@ -57,6 +60,8 @@ The simulator follows a **state–update paradigm** tailored for control:
 ---
 
 ## 3. Basic Usage
+
+For further details, see the demo and examples folder.
 
 ### 3.1 Minimal Example
 
