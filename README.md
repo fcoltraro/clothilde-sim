@@ -14,6 +14,9 @@ This repository contains a cloth simulator specifically designed for **robotics 
 
 The simulator has been used and validated in the context of **dynamic textile manipulation** by robots, showcasing its realism when compared with real recordings of various textiles. For more information on robotic applications and validations, click <a href="https://fcoltraro.github.io/projects/telas/"> here</a>.
 
+
+https://github.com/user-attachments/assets/4dcf4124-d486-414f-9cc4-a79dca4d09b4
+
 ---
 
 ## 1. Installation
