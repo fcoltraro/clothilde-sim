@@ -12,7 +12,7 @@ This repository contains a cloth simulator specifically designed for **robotics 
 * _Physical consistency_: the simulator is very stable under various remeshings of the cloth.
 * _Easy of use and modularity_: just a few lines of Python code are enough to start simulating.
 
-The simulator has been used and validated in the context of **dynamic textile manipulation** by robots, showcasing its realism when compared with real recordings of various textiles.
+The simulator has been used and validated in the context of **dynamic textile manipulation** by robots, showcasing its realism when compared with real recordings of various textiles. For more information on robotic applications and validations, click <a href="https://fcoltraro.github.io/projects/telas/"> here</a>.
 
 ---
 
