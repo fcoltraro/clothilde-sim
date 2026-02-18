@@ -1,4 +1,4 @@
-# Clothilde simulator: accurate physical simulation of textiles 
+# clothilde-sim: accurate physical simulation of (quasi)-inextensible textiles 
 
 
 https://github.com/user-attachments/assets/00d62006-e6ad-4f0a-8ace-b711f61eee81
