@@ -77,7 +77,7 @@ X, T = createRectangularMesh(a = 0.5, b = 0.8, na = na, nb = nb, h = 0.2)
 clothilde = Cloth(X, T);
 
 #set default parameters
-dt = clothilde.estimateTimeStep(L=0.8)
+dt = clothilde.estimateTimeStep(L = 0.8)
 clothilde.setSimulatorParameters(dt = dt)
 
 #simulate 6 seconds fixing two corners
@@ -140,7 +140,7 @@ Typical values are of the order of 0.001 and bigger. Use `self.estimateTimeStep(
 
 ### 6.2 Constraint satisfaction
 
-We use a custom solver based on XPBD ideas. The critical parameter is `tol` which control relative error in constraint satisfaction to stop iterations. Typical good values are under 1%, e.g. `tol = 0.0075`.
+We use a custom solver based on XPBD ideas. The critical parameter is `tol` which controls relative error in constraint satisfaction to stop iterations. Typical good values are under 1%, e.g. `tol = 0.0075`.
 
 
 ---
@@ -152,7 +152,7 @@ The simulator supports:
 * Fixed nodes
 * Prescribed trajectories 
 
-This allows modeling pick-and-place operations. For this simply call `self.simulate(u, control)` where `u` are the desired m x 3 future positions of the m controled nodes whose indices with respect to `X` are given in the list `control`.  
+This allows modeling pick-and-place operations. For performing one time-step simply call `self.simulate(u, control)` where `u` are the desired m x 3 future positions of the m controled nodes whose indices with respect to `X` are given in the list `control`.  
 
 ---
 
