@@ -161,12 +161,12 @@ This allows modeling pick-and-place operations. For this simply call `self.simul
 If you use this simulator in academic work, please cite:
 
 > An inextensible model for the robotic manipulation of textiles
-Franco Coltraro, Jaume Amorós , Maria Alberich-Carramiñana and Carme Torras
-Applied Mathematical Modelling, 2022
+F Coltraro, J Amorós, M Alberich-Carraminana, C Torras
+Applied Mathematical Modelling 101 (2022), 832-858
 
 > A novel collision model for inextensible textiles and its experimental validation
-Franco Coltraro, Jaume Amorós , Maria Alberich-Carramiñana and Carme Torras
-Applied Mathematical Modelling, 2024
+F Coltraro, J Amorós, M Alberich-Carramiñana, C Torras
+Applied Mathematical Modelling 128 (2024), 287-3084
 
 ---
 
