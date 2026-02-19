@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/4dcf4124-d486-414f-9cc4-a79dca4d09b4
 
 ## 1. Installation
 
-We recomend using the conda package and a conda enviroment for simulation (especially in Mac and Windows systems). 
+We recomend using the miniconda package and a conda enviroment for simulation (especially in Mac and Windows systems). 
 
 ### 1.1 Requirements
 
@@ -52,8 +52,8 @@ pip install polyscope line_profiler
 
 The simulator follows a **state–update paradigm** tailored for control:
 
-* The cloth is represented as a discrete mesh (a nodes matrix X + quad connectivity T)
-* Dynamics are advanced a time step dt using a custom implicit time integrator
+* The cloth is represented as a discrete mesh (a nodes matrix `X` + quad connectivity `T`)
+* Dynamics are advanced a time step `dt` using a custom implicit time integrator
 * External actions, i.e. _grasping and control_ enter as boundary conditions, that is (pin) equality constraints
 * Inextensibility and contacts are modeled as hard equality and inequality constraints respectively
 
@@ -85,7 +85,7 @@ tf = int(6/dt); inds = [0, na-1]; u = clothilde.positions[inds]
 for _ in range(tf):
     clothilde.simulate(u = u, control = inds)
 
-#make a moving with the simulated frames
+#make a movie with the simulated frames
 clothilde.makeMovie(speed = 5, repeat = True, smooth = 2)
 ```
 
@@ -93,56 +93,35 @@ clothilde.makeMovie(speed = 5, repeat = True, smooth = 2)
 
 The simulator exposes:
 
-* Node positions `self.positions` updated every time self.simulate() is called and their history in self.history_pos 
-* Velocities `self.velocities` updated every time self.simulate() is called and their history in self.history_vel
+* Node positions `self.positions` updated every time `self.simulate()` is called and their history in `self.history_pos`
+* Velocities `self.velocities` updated every time `self.simulate()` is called and their history in `self.history_vel`  
 
 ---
-<!--
 ## 4. Core Inputs
 
-### 4.1 Mesh and Topology
+### 4.1 Mesh and Topology (only quad meshes are allowed)
 
 Key mesh parameters:
 
-* `nx, ny`: number of nodes in each direction
-* `dx`: rest edge length
-* Connectivity: structural, shear, and bending links
+* initial cloth position `X`: n x 3 positions in Euclidean space of the nodes of the mesh.
+* connectivity `T`: quad conectivity of the mesh w.r.t. `X`. Can have non-trivial topology.
 
-**Recommendation:**
-
-* Use coarse meshes (10–30 nodes per side) for control and MPC
-* Finer meshes are possible but solver cost scales quickly
 
 ### 4.2 Material Parameters
 
-Typical physical parameters:
+Physical parameters:
 
-* Surface density (kg/m²)
-* Stretching stiffness
-* Bending stiffness
-* Damping coefficients
-
-These parameters are **lumped** and intended to be tuned at the system level rather than matched to textile microstructure.
-
----
-
-## 5. Aerodynamic Model (If Enabled)
-
-The simulator supports a lightweight aerodynamic correction designed for real-time control.
-
-Characteristics:
-
-* Drag force proportional to relative velocity
-* Acts normal to local cloth surface
-* Computationally cheap (no CFD, no airflow state)
-
-Key parameters:
-
-* Drag coefficient
-* Effective area scaling
-
-**Practical note:**
-Aerodynamics significantly improve realism during fast motions but can destabilize the solver if stiffness and damping are not balanced.
+* rho:  Surface density (kg/m²)
+* delta: Aerodynamics parameter (between 0 and rho, see the first reference)
+* alpha: Rayleigh linear damping of big oscillations (usually between rho and 3*rho)
+* kappa: stifness or bending resistance (scales like dt²)
+* shr: allowed shearing resistance (scales like dt², 0 is no shearing)
+* str: allowed stretching resistance (scales like dt², 0 is no stretching)
+* mu_f: friction with the floor (typically between 0 and 1)
+* mu_s: friction with the cloth itself (typically between 0 and 1)
+* thck: adimensional thickness of the cloth (between 0.9 and 1.2)
+  
+See `self.setSimulatorParameters()` for typical values for a 1m x 1m cloth.   
 
 ---
 
@@ -150,30 +129,14 @@ Aerodynamics significantly improve realism during fast motions but can destabili
 
 ### 6.1 Integrator
 
-* Implicit Euler / semi-implicit scheme
-* Chosen for stability under stiff elastic forces
-
+* Implicit Euler or trapezoidal rule (the second is the default)
+  
 Time step `dt` is a **critical parameter**:
 
-* Too large → excessive numerical damping or solver failure
+* Too large → excessive number of iterations
 * Too small → unnecessary computational cost
 
-Typical values:
-
-* `dt = 1e-2` for quasi-static motions
-* `dt = 1e-3 – 5e-3` for dynamic manipulation
-
-### 6.2 Solver
-
-The core linear systems are solved using sparse factorizations and OSQP where constraints are active.
-
-Important solver-related parameters:
-
-* Constraint penalty weights
-* Solver tolerances
-* Maximum iterations
-
-For control applications, solver determinism is prioritized over raw accuracy.
+Typical values are of the order of 0.001 and bigger. Use `self.estimateTimeStep(L)` where L is the largest linear dimension of your cloth. 
 
 ---
 
@@ -182,65 +145,13 @@ For control applications, solver determinism is prioritized over raw accuracy.
 The simulator supports:
 
 * Fixed nodes
-* Prescribed trajectories (position or velocity controlled)
-* Time-varying constraints
+* Prescribed trajectories 
 
-This allows modeling:
-
-* Robot grippers
-* Sliding contacts
-* Pick-and-place operations
-
-Boundary conditions are applied **before** force assembly to ensure consistency.
+This allows modeling pick-and-place operations. For this simply call `self.simulate(u, control)` where `u` is the desired m x 3 future positions of the m control nodes whose indices with respect to `X` are given in `control`.  
 
 ---
 
-## 8. Parameter Tuning Guidelines
-
-### 8.1 Common Failure Modes
-
-* Excessive stiffness → solver divergence
-* Low damping → oscillations
-* Large dt + aerodynamics → instability
-
-### 8.2 Recommended Workflow
-
-1. Disable aerodynamics
-2. Tune elastic parameters for stability
-3. Add damping until oscillations are controlled
-4. Enable aerodynamics and reduce `dt` if needed
-
-Always tune parameters **in combination**, not independently.
-
----
-
-## 9. Performance Considerations
-
-* Computational cost scales roughly linearly with number of nodes
-* Cholesky factorizations dominate runtime
-* Mesh resolution is the primary performance lever
-
-For MPC or real-time control:
-
-* Prefer coarse meshes
-* Use short horizons
-* Reuse factorizations where possible
-
----
-
-## 10. Limitations
-
-This simulator is **not** intended for:
-
-* High-fidelity garment simulation
-* Wrinkle-level visual realism
-* Self-collision-heavy scenarios
-
-Its purpose is **predictive modeling for control and planning**.
--->
----
-
-## 11. Citation
+## 8. Citation
 
 If you use this simulator in academic work, please cite:
 
@@ -254,7 +165,7 @@ Applied Mathematical Modelling, 2024
 
 ---
 
-## 12. Future Extensions
+## 9. Future Extensions
 
 Potential directions:
 
