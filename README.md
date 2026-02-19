@@ -138,6 +138,11 @@ Time step `dt` is a **critical parameter**:
 
 Typical values are of the order of 0.001 and bigger. Use `self.estimateTimeStep(L)` where L is the largest linear dimension of your cloth. 
 
+### 6.2 Constraint satisfaction
+
+We use a custom solver based on XPBD ideas. The critical parameter is `tol` which control relative error in constraint satisfaction to stop iterations. Typical good values are under 1%, e.g. `tol = 0.0075`.
+
+
 ---
 
 ## 7. Boundary Conditions and Control Interfaces
@@ -147,7 +152,7 @@ The simulator supports:
 * Fixed nodes
 * Prescribed trajectories 
 
-This allows modeling pick-and-place operations. For this simply call `self.simulate(u, control)` where `u` is the desired m x 3 future positions of the m control nodes whose indices with respect to `X` are given in `control`.  
+This allows modeling pick-and-place operations. For this simply call `self.simulate(u, control)` where `u` are the desired m x 3 future positions of the m controled nodes whose indices with respect to `X` are given in the list `control`.  
 
 ---
 
