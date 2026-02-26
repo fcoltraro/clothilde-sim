@@ -8,7 +8,7 @@ import numpy as np
 #np.set_printoptions(threshold=sys.maxsize)
 import time
 
-na = 45; nb = 28
+na = 35; nb = 20
 X, T = createRectangularMesh(a = 0.9,b = 0.5, na = na, nb = nb, h = 0.05)
 X[:,2] += 0.4; #adjust height
 
@@ -21,12 +21,12 @@ tol = 0.0095 # up to 0.75% of relative error in constraint satisfaction to stop 
 #physical parameters
 rho = 0.1 #cloth density
 delta = 0.08 # aerodynamics parameter: between 0 and rho
-kappa = 0.15*1e-4 # stifness or bending resistance
+kappa = 0.2*1e-4 # stifness or bending resistance
 alpha = 0.2 #damping of oscillations
 shr = 1.2*1e-4 #allowed shearing resistance
 str = 0.005*1e-4 #allowed stretching resistance
 mu_f = 0.45 #friction with the floor
-mu_s = 0.4 #friction with the cloth itself
+mu_s = 0.35 #friction with the cloth itself
 thck = 0.95 #size of the balls
 
 clothilde.setSimulatorParameters(dt=dt,tol=tol,
@@ -55,3 +55,5 @@ print('Average iterations',clothilde.total_iters/(len(clothilde.history_pos)-1))
 
 
 clothilde.makeMovie(5,True,2)
+
+#kernprof -l -v test6.py > perfil_selfcols6.txt

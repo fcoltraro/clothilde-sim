@@ -1006,7 +1006,7 @@ class Cloth:
             #shearing
             phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
                                                                 lambda_shr,self.shr,
-                                                                update_chol,0.01,n_iter%3)
+                                                                update_chol,0.005,n_iter%3)
 
             #stretching
             phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
@@ -1023,7 +1023,7 @@ class Cloth:
             #iteration count 
             n_iter += 1
 
-            #print(n_iter,error_shr,error_str)
+        #print(n_iter)
 
         #floor collisions
         phi = self.floorCollisions(phi)
