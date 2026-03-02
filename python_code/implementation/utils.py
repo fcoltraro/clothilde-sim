@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial import cKDTree
 
 def createMesh(interval, npx, npy, f1, f2, f3):
     #se crea a partir de una parametrizacion de la forma (f1(x,y),f2(x,y),f3(x,y))
@@ -31,7 +32,7 @@ def createRectangularMesh(a,b,na,nb,h = 0.5):
     def f2(x, y):
         return y
     def f3(x, y):
-        return h*(1-x**2) #avoid singular case
+        return h*(0.25-x**2) #avoid singular case
     #rectangle; a and b are the sides of the rectangle and na nb the number of nodes
     rect = [-a/2, a/2, -b/2, b/2]
     #create the mesh
@@ -86,4 +87,33 @@ def quad_cylinder_mesh(R, H, h, f=1.0):
             F.append([v0, v1, v2, v3])
 
     return V, np.asarray(F, dtype=np.int64)
+
+
+def duplicate_node_pairs(X, tol=1e-9):
+    """
+    Parameters
+    ----------
+    X : (n, 3) array
+        Node positions
+    tol : float
+        Distance tolerance for considering two nodes identical
+
+    Returns
+    -------
+    pairs : (r, 2) array of int
+        Each row [i, j] means X[i] and X[j] are the same (within tol), with i < j
+    """
+    X = np.asarray(X)
+    tree = cKDTree(X)
+
+    # Get all unordered pairs within tolerance
+    pairs = tree.query_pairs(r=tol)
+
+    if not pairs:
+        return np.empty((0, 2), dtype=int)
+
+    # Convert set of tuples to sorted array
+    pairs = np.array(list(pairs), dtype=int)
+    pairs.sort(axis=1)  # ensure (i, j) with i < j
+    return pairs
 
