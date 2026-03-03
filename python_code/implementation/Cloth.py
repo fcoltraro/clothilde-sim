@@ -873,15 +873,54 @@ class Cloth:
         return phi
     
     def buildShareEdgeMatrix(self):
-        share_edge = np.zeros((self.n_verts, self.n_verts), dtype=bool)
-        for edge in self.edges_matrix:  # each edge has 2 nodes
-            a,b = edge
-            share_edge[a, b] = True
-            share_edge[b, a] = True
-        for pair in self.seams:  # each seam has 2 nodes
-            a,b = pair
-            share_edge[a, b] = True
-            share_edge[b, a] = True
+        n = self.n_verts
+        # --- Union-Find over seam equivalences ---
+        parent = np.arange(n, dtype=int)
+        rank = np.zeros(n, dtype=int)
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra == rb:
+                return
+            if rank[ra] < rank[rb]:
+                parent[ra] = rb
+            elif rank[ra] > rank[rb]:
+                parent[rb] = ra
+            else:
+                parent[rb] = ra
+                rank[ra] += 1
+
+        for a, b in self.seams:
+            union(a, b)
+
+        reps = np.array([find(i) for i in range(n)], dtype=int)
+
+        # group members by representative
+        groups = {}
+        for idx, r in enumerate(reps):
+            groups.setdefault(r, []).append(idx)
+
+        share_edge = np.zeros((n, n), dtype=bool)
+
+        # --- (1) clique within each equivalence class ---
+        for members in groups.values():
+            if len(members) > 1:
+                m = np.array(members, dtype=int)
+                share_edge[np.ix_(m, m)] = True
+
+        # --- (2) lift real edges across equivalence classes ---
+        for u, v in self.edges_matrix:
+            gu = np.array(groups[reps[u]], dtype=int)
+            gv = np.array(groups[reps[v]], dtype=int)
+            share_edge[np.ix_(gu, gv)] = True
+            share_edge[np.ix_(gv, gu)] = True
+
         self.share_edge = share_edge
     
     @profile
