@@ -19,17 +19,17 @@ X += 0.0002*np.random.randn(X.shape[0],3)
 
 self = Cloth(X, T); 
 dt = self.estimateTimeStep(L=1)
-self.setSimulatorParameters(dt = dt, thck = 1.1, mu_s = 0.35, str = 0.01*1e-4, kappa_bnd = 0.05*1e-4, 
-                            shr = 30*1e-4, tol = 0.0075, kappa = 1*1e-4, mu_f = 0.35)
+self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.4, str = 0.01*1e-4, kappa_bnd = 0.1*1e-4, 
+                            shr = 40*1e-4, tol = 0.0075, kappa = 1.5*1e-4, mu_f = 0.35)
 self.plotMesh()
 tf = int(3/dt)
-inds = [287]; u = self.positions[inds]
+inds = [181]; u = self.positions[inds]
 start_time = time.time()
 for i in range(tf):
     self.simulate(u = u, control = inds)
 tf = int(2.5/dt)
 t = np.linspace(0,2*np.pi,tf)
-inds = [0]
+inds = [na-1]
 for j in range(tf):
     #print("iteration :",j)
     u = self.positions[inds]
