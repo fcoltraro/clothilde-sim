@@ -346,18 +346,7 @@ class Cloth:
         Saves:
         Kb = Lb.T @ Minv_b @ Lb, where Minv_b is a lumped (diagonal) inverse of Mb
             (with zero inverse on inactive vertices; optionally eps regularization in denominator)
-
-        Corner handling:
-        - boundary is split into chains between corners
-        - edges incident to corners are skipped (so bending ignores corners)
-
-        Parameters
-        ----------
-        eps_inv_mass : float
-            Regularization added in inverse mass denominator: 1/(Mb_ii + eps_inv_mass).
-            Leave 0.0 if you want strict masking on zero diagonal entries.
         """
-
         n = self.n_verts
         pos = self.positions
         edges = np.asarray(self.edges_bnd, dtype=int)
