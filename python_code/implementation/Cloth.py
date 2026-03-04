@@ -154,6 +154,7 @@ class Cloth:
         self.triangulateQuadMesh()
         self.prepareMatrices()
         self.computeStretchShear()
+        self.precomputeBoundaryBending()
 
     def checkQuadMesh(self):
         pass
@@ -334,6 +335,74 @@ class Cloth:
                     L[faces[i, j], faces[i, k]] += Le[j, k]
         return M.tocsc(), L.tocsc()
     
+
+    def precomputeBoundaryBending(self, eps_inv_mass=0.0):
+        """
+        Boundary-only Laplacian-style bending precompute.
+
+        Builds:
+        Mb : (n_verts x n_verts)  1D boundary mass matrix (assembled on boundary edges)
+        Lb : (n_verts x n_verts)  1D boundary stiffness / Laplacian matrix (assembled on boundary edges)
+        Saves:
+        Kb = Lb.T @ Minv_b @ Lb, where Minv_b is a lumped (diagonal) inverse of Mb
+            (with zero inverse on inactive vertices; optionally eps regularization in denominator)
+
+        Corner handling:
+        - boundary is split into chains between corners
+        - edges incident to corners are skipped (so bending ignores corners)
+
+        Parameters
+        ----------
+        eps_inv_mass : float
+            Regularization added in inverse mass denominator: 1/(Mb_ii + eps_inv_mass).
+            Leave 0.0 if you want strict masking on zero diagonal entries.
+        """
+
+        n = self.n_verts
+        pos = self.positions
+        edges = np.asarray(self.edges_bnd, dtype=int)
+        corners = np.asarray(self.corners, dtype=int)
+
+        # --- Assemble Mb, Lb as global (n x n) sparse matrices ---
+        Mb = sp.lil_array((n, n))
+        Lb = sp.lil_array((n, n))
+
+        for (a, b) in edges:
+            xa = pos[a]
+            xb = pos[b]
+            ell = float(np.linalg.norm(xb - xa))
+            if ell < 1e-12:
+                continue
+
+            # 1D linear FEM on segment: mass and stiffness
+            Me = (ell / 6.0) * np.array([[2.0, 1.0],
+                                        [1.0, 2.0]], dtype=float)
+            Ke = (1.0 / ell) * np.array([[ 1.0, -1.0],
+                                        [-1.0,  1.0]], dtype=float)
+
+            # Assemble 2x2 into global
+            idx = (a, b)
+            for iL in range(2):
+                I = idx[iL]
+                for jL in range(2):
+                    J = idx[jL]
+                    Mb[I, J] += Me[iL, jL]
+                    Lb[I, J] += Ke[iL, jL]
+
+        Mb = Mb.tocsc()
+
+        # --- Lumped inverse mass (safe with skipped corners / isolated verts) ---
+        d = np.asarray(Mb.diagonal()).ravel()
+        invd = np.zeros_like(d)
+        mask = d > 0.0
+        invd[mask] = 1.0 / (d[mask] + float(eps_inv_mass))
+        Minv_b = sp.diags(invd, format="csc")
+        Lb[corners,:] = 0
+        Lb = Lb.tocsc()
+
+        # Boundary bending stiffness/operator in same style as interior: Kb = Lb^T Minv Lb
+        self.Kb = (Lb.T @ Minv_b @ Lb).tocsc()
+    
     
     def computeStretchShear(self):
         neighs_xi = {i: set() for i in range(self.n_verts)}
@@ -353,6 +422,7 @@ class Cloth:
 
         neighs_shear = []
         corners_shear = []
+        self.corners = []
         for n in range(self.n_verts):
             if len(neighs_xi[n]) == 2 and len(neighs_eta[n]) == 2:       
                 neighs_shear.append(list(neighs_xi[n]) + list(neighs_eta[n]))
@@ -362,6 +432,7 @@ class Cloth:
                 neighs_shear.append([n] + list(neighs_xi[n]) + list(neighs_eta[n]))
             elif len(neighs_xi[n]) == 1 and len(neighs_eta[n]) == 1:
                 corners_shear.append([n] + list(neighs_xi[n]) + [n] + list(neighs_eta[n]))
+                self.corners.append(n)
 
         bars = np.vstack([self.faces[:,[0,1]],self.faces[:,[1,2]],
                           self.faces[:,[2,3]],self.faces[:,[3,0]]])
@@ -670,7 +741,8 @@ class Cloth:
  
     def setSimulatorParameters(self, dt = 0.0025, tol = 0.0075, 
                                rho = 0.1, delta = 0.1, alpha = 0.2,
-                               kappa = 0.5*1e-4, str = 0.01*1e-4, shr = 10*1e-4,
+                               kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
+                               str = 0.01*1e-4, shr = 10*1e-4,
                                mu_f = 0.2, mu_s = 0.35, thck = 0.95):
         #solver parameters
         self.dt = dt #time step
@@ -683,6 +755,7 @@ class Cloth:
         self.delta = delta # virtual mass 
         self.alpha = alpha # slow damping 
         self.kappa = kappa # bending stiffness
+        self.kappa_bnd = kappa_bnd # bending stiffness
         self.beta = 0.015*self.kappa # fast damping: do not change in general
         self.str = str/(dt**2) # stretch elasticity
         self.shr = shr/(dt**2) # shear elasticity
@@ -698,7 +771,7 @@ class Cloth:
 
         #factorize implicit step matrix E for fast unconstrained step
         D = self.alpha*self.M + self.beta*self.K 
-        K = self.kappa*self.K; M = self.rho*self.M; 
+        K = self.kappa*self.K + self.kappa_bnd*self.Kb; M = self.rho*self.M; 
         E = M + self.dt*D + (self.dt**2)*K 
         Et = M + 0.5*self.dt*D + 0.25*(self.dt**2)*K 
 

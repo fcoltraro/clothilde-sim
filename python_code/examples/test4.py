@@ -20,7 +20,7 @@ self = Cloth(X, T);
 dt = self.estimateTimeStep(L=0.6);
 dt = 0.002
 self.setSimulatorParameters(dt=dt,tol=0.0085, 
-                            rho=0.1,delta=0.1,kappa=0.25*1e-4,shr=0.5*1e-4,
+                            rho=0.1,delta=0.1,kappa=0.25*1e-4,shr=0.5*1e-4, kappa_bnd = 0.025*1e-4,
                             str=0.001*1e-4,alpha=0.2,mu_f=0.3,mu_s=0.3,thck=0.9)
 self.plotMesh()
 tf = int(5/dt)
