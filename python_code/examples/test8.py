@@ -50,3 +50,5 @@ print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 self.makeMovie(speed=5,repeat=False,smooth=2)
+
+#kernprof -l -v test8.py > perfil_selfcols8.txt
