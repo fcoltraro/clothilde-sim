@@ -150,6 +150,7 @@ class Cloth:
         self.computeEdges()
         self.buildShareEdgeMatrix()
         self.buildAdjacencyMatrices()
+        self.connectedComponents()
         self.computeBoundary()
         self.triangulateQuadMesh()
         self.prepareMatrices()
@@ -230,6 +231,15 @@ class Cloth:
             self.A2t = self.A2.T.tocsr()
             self.nodes_faces_count = np.array(self.A2.sum(axis=0))[0]
             self.Am = sp.vstack([sp.eye(self.n_verts),0.25*self.A2]).tocsr() #for plotting
+
+    def connectedComponents(self):
+        A_faces = self.A1 @ self.A1.T
+        A_faces.setdiag(0)
+        A_faces.eliminate_zeros()
+        n_comp, labels = sp.csgraph.connected_components(A_faces, directed=False)
+        self.components = [np.where(labels == k)[0] for k in range(n_comp)]
+        self.n_comps = len(self.components)
+        #print(self.n_comps)
 
     def computeBoundary(self):
         sumCols = np.array(self.A1.T.sum(axis=1))
@@ -391,13 +401,31 @@ class Cloth:
 
         # Boundary bending stiffness/operator in same style as interior: Kb = Lb^T Minv Lb
         self.Kb = (Lb.T @ Minv_b @ Lb).tocsc()
-    
-    
+
     def computeStretchShear(self):
+        self.stretch = []
+        self.shear = []
+        all_corners = []
+
+        for comp in self.components:
+            faces_k = self.faces[comp]
+            stretch_k, shear_k, corners_k = self.computeStretchShearLocal(faces_k)
+
+            self.stretch.append(stretch_k)
+            self.shear.append(shear_k)
+            all_corners.append(corners_k)
+
+        if len(all_corners) == 0:
+            self.corners = np.zeros(0, dtype=int)
+        else:
+            self.corners = np.unique(np.concatenate(all_corners))
+    
+    
+    def computeStretchShearLocal(self,faces):
         neighs_xi = {i: set() for i in range(self.n_verts)}
         neighs_eta = {i: set() for i in range(self.n_verts)}
 
-        for face in self.faces:
+        for face in faces:
             #direction xi
             neighs_xi[face[0]].add(face[1])
             neighs_xi[face[1]].add(face[0])
@@ -411,7 +439,7 @@ class Cloth:
 
         neighs_shear = []
         corners_shear = []
-        self.corners = []
+        corners = []
         for n in range(self.n_verts):
             if len(neighs_xi[n]) == 2 and len(neighs_eta[n]) == 2:       
                 neighs_shear.append(list(neighs_xi[n]) + list(neighs_eta[n]))
@@ -421,10 +449,10 @@ class Cloth:
                 neighs_shear.append([n] + list(neighs_xi[n]) + list(neighs_eta[n]))
             elif len(neighs_xi[n]) == 1 and len(neighs_eta[n]) == 1:
                 corners_shear.append([n] + list(neighs_xi[n]) + [n] + list(neighs_eta[n]))
-                self.corners.append(n)
+                corners.append(n)
 
-        bars = np.vstack([self.faces[:,[0,1]],self.faces[:,[1,2]],
-                          self.faces[:,[2,3]],self.faces[:,[3,0]]])
+        bars = np.vstack([faces[:,[0,1]],faces[:,[1,2]],
+                          faces[:,[2,3]],faces[:,[3,0]]])
         bars = np.unique(np.sort(bars, axis = 1),axis=0)
 
         #remove constraints from the seams
@@ -434,8 +462,9 @@ class Cloth:
            shear_corners = np.zeros((0,4),dtype=int)
 
         #inititate the class    
-        self.stretch = self.Stretch(bars, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
-        self.shear = self.Shear(shear_neighs, shear_corners, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
+        stretch = self.Stretch(bars, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
+        shear = self.Shear(shear_neighs, shear_corners, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
+        return stretch, shear, np.array(corners, dtype=int)
 
     class Stretch:
         def __init__(self, bars, X, n_verts, m_sqrt, seams, IJKs):
@@ -610,7 +639,8 @@ class Cloth:
             return val
         
     def estimateTimeStep(self,L=1):
-        h = np.sqrt(np.mean(self.stretch.abs_val0))
+        longs = self.computeNorm(self.positions[self.edges_matrix[:,1]]-self.positions[self.edges_matrix[:,0]])
+        h = np.mean(longs)
         dt = (1/3)*(h/np.sqrt(2*9.81*L))
         print("Based on your mesh, your best dt is:",dt)
         return dt
@@ -704,6 +734,7 @@ class Cloth:
         #lenght of edges of the quad mesh
         e0 = self.edges_matrix[:,0]; e1 = self.edges_matrix[:,1]
         longs = self.computeNorm(self.positions[e1]-self.positions[e0])
+        self.longs_m = np.mean(longs)
         min_l = np.min(longs); max_l = np.max(longs)
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
         assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
@@ -1103,8 +1134,9 @@ class Cloth:
                 Ku = np.ones_like(Iu)            
             else:
                 Iu = self.empty; Ju = self.empty; Ku = self.empty
-            self.shear.update_u(Iu,Ju,Ku)
-            self.stretch.update_u(Iu,Ju,Ku)
+            for k in range(self.n_comps):
+                self.shear[k].update_u(Iu,Ju,Ku)
+                self.stretch[k].update_u(Iu,Ju,Ku)
         return u, u_mat, n_ctr, update_chol
 
 
@@ -1120,23 +1152,39 @@ class Cloth:
         phi = self.unconstrainedStep(self.implicitEuler)
 
         #lagrange multipliers for the shear and stretch constraints
-        lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
-        lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
+        lambda_shr = [
+            np.zeros((shear_k.n_conds + u.shape[0] + 3*self.n_seams,))
+            for shear_k in self.shear
+        ]
+        lambda_str = [
+            np.zeros((stretch_k.n_conds + u.shape[0] + 3*self.n_seams,))
+            for stretch_k in self.stretch
+        ]
 
         #solver variables for inextensiblity 
         n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_slf = -np.inf
 
         while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
+            error_shr = 0.0
+            error_str = 0.0
 
-            #shearing
-            phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
-                                                                lambda_shr,self.shr,
-                                                                update_chol,0.005,n_iter%3)
+            #shearing: project all connected components
+            for k, shear_k in enumerate(self.shear):
+                phi, lambda_shr[k], err_k = self.projectConstraints(
+                    shear_k, phi, u, control,
+                    lambda_shr[k], self.shr,
+                    update_chol, 0.005, n_iter % 3
+                )
+                error_shr = max(error_shr, err_k)
 
-            #stretching
-            phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
-                                                                lambda_str,self.str,
-                                                                update_chol,0,0)   
+            # stretching: project all connected components
+            for k, stretch_k in enumerate(self.stretch):
+                phi, lambda_str[k], err_k = self.projectConstraints(
+                    stretch_k, phi, u, control,
+                    lambda_str[k], self.str,
+                    update_chol, 0, 0
+                )
+                error_str = max(error_str, err_k)  
             
 
             #control constraints
