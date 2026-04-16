@@ -9,7 +9,7 @@ np.set_printoptions(threshold=sys.maxsize)
 import time
 
 # Caida libre
-na = 20; nb = 20
+na = 23; nb = 23
 np.random.seed(10)
 X, T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.75)
 X[:,2] = (1 - np.exp(3*(X[:,1]-0.5)))*X[:,2]
@@ -26,9 +26,9 @@ X[:,2] += 1.8;
 
 
 self = Cloth(X, T, seam); 
-dt = self.estimateTimeStep(L=1.2)
-self.setSimulatorParameters(dt = dt, thck = 0.99, mu_s = 0.35, str = 0.005*1e-4, shr = 15*1e-4, 
-                            tol = 0.0075, kappa = 1.25*1e-4, kappa_bnd = 0.25*1e-4,  mu_f = 0.25)
+dt = self.estimateTimeStep(L=1.25)
+self.setSimulatorParameters(dt = dt, thck = 0.99, mu_s = 0.4, str = 0.005*1e-4, shr = 20*1e-4, 
+                            tol = 0.0085, kappa = 1.5*1e-4,kappa_bnd = 0.0*1e-4, mu_f = 0.3)
 print(self.corners)
 self.plotMesh()
 
@@ -51,4 +51,4 @@ for i in range(tf):
 print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
-self.makeMovie(speed=3,repeat=False,smooth=2)
+self.makeMovie(speed=4,repeat=False,smooth=2)
