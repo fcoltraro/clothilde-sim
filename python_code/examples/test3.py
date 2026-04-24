@@ -9,7 +9,7 @@ import numpy as np
 import time
 
 # Caida libre
-n = 22; na = n; nb = n
+n = 27; na = n; nb = n
 m = np.int32(np.floor(n/2))
 np.random.seed(10)
 X, T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.1)
@@ -20,10 +20,10 @@ X += 0.0002*np.random.randn(X.shape[0],3)
 self = Cloth(X, T); 
 dt = self.estimateTimeStep(L=1)
 self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.4, str = 0.01*1e-4, kappa_bnd = 0.1*1e-4, 
-                            shr = 40*1e-4, tol = 0.0075, kappa = 1.5*1e-4, mu_f = 0.35)
+                            shr = 20*1e-4, tol = 0.0075, kappa = 1.5*1e-4, mu_f = 0.35)
 self.plotMesh()
 tf = int(3/dt)
-inds = [181]; u = self.positions[inds]
+inds = [378]; u = self.positions[inds]
 start_time = time.time()
 for i in range(tf):
     self.simulate(u = u, control = inds)

@@ -95,6 +95,7 @@ class Cloth:
         #controled nodes
         self.control = [] #for precomputing cholesky factorizations and only updating when necessary
         self.Iu = self.empty; self.Ju = self.empty; self.Ku = self.empty
+        self.share_control = np.zeros((self.n_verts, self.n_verts), dtype=bool)
 
         #compute all the necesary elements for simulation only once
         self.prepareSimulation()
@@ -1001,6 +1002,9 @@ class Cloth:
         #second mask
         mask2 = ~self.share_edge[ni,nj]
         ni = ni[mask2]; nj = nj[mask2]
+        #third mask
+        mask3 = ~self.share_control[ni,nj]
+        ni = ni[mask3]; nj = nj[mask3]
         #set radiouses to avoid jitering when the balls are too big
         self.rads = self.matrix_rads[ni,nj]
         #potential colliding nodes-nodes
@@ -1014,7 +1018,7 @@ class Cloth:
         #check close pairs
         diff = phi_mat - self.last_check
         mov = np.sqrt(np.max(self.innerProduct(diff, diff)/self.den_last))
-        if (mov > self.mov_tol) or (self.total_iters == 0): #only check when at least 1 node has moved more than mov_eps
+        if (mov > self.mov_tol) or (self.total_iters == 0) or self.update_chol: #only check when at least 1 node has moved more than mov_eps
             self.computeClosePairs(phi_mat) #update close pairs
             self.last_check = phi_mat #update last checked mesh
             self.den_last = self.innerProduct(self.last_check,self.last_check)
@@ -1040,11 +1044,11 @@ class Cloth:
         return phi 
 
     @profile
-    def projectConstraints(self,constraints,phi,u,control,landa,par,update_chol,den_error,n):
+    def projectConstraints(self,constraints,phi,u,control,landa,par,den_error,n):
         #evaluate constraints
         if n == 0:
             val = constraints.evaluate(phi,u,control,grad=True)
-            if update_chol or constraints.factor is None:
+            if self.update_chol or constraints.factor is None:
                constraints.factor = cholesky_AAt(constraints.grad, beta = par) 
             else:
                constraints.factor.cholesky_AAt_inplace(constraints.grad, beta = par)
@@ -1092,11 +1096,13 @@ class Cloth:
            u = np.zeros((0,))
            u_mat = np.zeros((0,3))
         #check if we need to update cholesky decomp. of constraints
-        update_chol = False
+        self.update_chol = False
         if self.control != control:
             #update internal variables
             self.control = control
-            update_chol = True
+            self.update_chol = True
+            self.share_control[:] = False
+            self.share_control[np.ix_(control, control)] = True
             if n_ctr > 0:
                 Iu = np.arange(3*n_ctr)
                 Ju = np.concatenate((control, [x+self.n_verts for x in control], [x+2*self.n_verts for x in control]))
@@ -1105,7 +1111,7 @@ class Cloth:
                 Iu = self.empty; Ju = self.empty; Ku = self.empty
             self.shear.update_u(Iu,Ju,Ku)
             self.stretch.update_u(Iu,Ju,Ku)
-        return u, u_mat, n_ctr, update_chol
+        return u, u_mat, n_ctr
 
 
     @profile
@@ -1114,7 +1120,7 @@ class Cloth:
         phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
 
         #process the control inputs
-        u, u_mat, n_ctr, update_chol = self.processControlInputs(u,control)
+        u, u_mat, n_ctr = self.processControlInputs(u,control)
 
         #unconstrained step to correct
         phi = self.unconstrainedStep(self.implicitEuler)
@@ -1130,13 +1136,11 @@ class Cloth:
 
             #shearing
             phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
-                                                                lambda_shr,self.shr,
-                                                                update_chol,0.005,n_iter%3)
+                                                                lambda_shr,self.shr,0.005,n_iter%3)
 
             #stretching
             phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
-                                                                lambda_str,self.str,
-                                                                update_chol,0,0)   
+                                                                lambda_str,self.str,0,0)   
             
 
             #control constraints
