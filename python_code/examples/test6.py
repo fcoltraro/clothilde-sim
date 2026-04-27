@@ -24,7 +24,7 @@ delta = 0.08 # aerodynamics parameter: between 0 and rho
 kappa = 0.25*1e-4 # stifness or bending resistance
 kappa_bnd = 0.01*1e-4 # stifness or bending resistance
 alpha = 0.2 #damping of oscillations
-shr = 0.5*1e-4 #allowed shearing resistance
+shr = 5*1e-4 #allowed shearing resistance
 str = 0.005*1e-4 #allowed stretching resistance
 mu_f = 0.45 #friction with the floor
 mu_s = 0.35 #friction with the cloth itself
@@ -44,7 +44,7 @@ for i in range(1000):
     clothilde.simulate(u = u, control = inds_ctr)
 u = clothilde.positions[inds_ctr]; 
 for i in range(tf):
-    u[:,1] += 0.0035*np.sin(freq*t[i])
+    u[:,1] += 0.004*np.sin(freq*t[i])
     clothilde.simulate(u = u, control = inds_ctr)
 inds_ctr = [0]
 u = clothilde.positions[inds_ctr]; 

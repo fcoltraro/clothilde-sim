@@ -717,6 +717,7 @@ class Cloth:
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
+        """
         #reduce in case it is too big
         sum_rads = np.minimum(2*self.rad,0.976*longs)
         matrix_rads[e0,e1] = sum_rads; matrix_rads[e1,e0] = sum_rads   
@@ -725,8 +726,11 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
+        """
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
+        self.rads_vec0 = self.rad*np.ones((self.n_verts,),dtype=float)
+        self.rads_vec = self.rads_vec0.copy()
 
  
     def setSimulatorParameters(self, dt = 0.0025, tol = 0.0075, 
@@ -984,6 +988,14 @@ class Cloth:
             share_edge[np.ix_(gu, gv)] = True
             share_edge[np.ix_(gv, gu)] = True
 
+        bars_diags = np.vstack([self.faces[:,[0,2]],self.faces[:,[1,3]]])
+
+        for u, v in bars_diags:
+            gu = np.array(groups[reps[u]], dtype=int)
+            gv = np.array(groups[reps[v]], dtype=int)
+            share_edge[np.ix_(gu, gv)] = True
+            share_edge[np.ix_(gv, gu)] = True
+
         self.share_edge = share_edge
     
     @profile
@@ -1006,7 +1018,8 @@ class Cloth:
         mask3 = ~self.share_control[ni,nj]
         ni = ni[mask3]; nj = nj[mask3]
         #set radiouses to avoid jitering when the balls are too big
-        self.rads = self.matrix_rads[ni,nj]
+        #self.rads = self.matrix_rads[ni,nj]
+        self.rads = self.rads_vec[ni] + self.rads_vec[nj]
         #potential colliding nodes-nodes
         self.near_nn0 = ni; self.near_nn1 = nj
 
@@ -1113,8 +1126,12 @@ class Cloth:
             #update internal variables
             self.control = control
             self.update_chol = True
+            #controlled nodes do not collide between themselves
             self.share_control[:] = False
             self.share_control[np.ix_(control, control)] = True
+            #grasped nodes become bigger for selfcollisions
+            self.rads_vec = self.rads_vec0.copy()
+            #self.rads_vec[control] *= 2
             if n_ctr > 0:
                 Iu = np.arange(3*n_ctr)
                 Ju = np.concatenate((control, [x+self.n_verts for x in control], [x+2*self.n_verts for x in control]))

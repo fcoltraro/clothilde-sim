@@ -17,8 +17,8 @@ X += 0.0001*np.random.randn(X.shape[0],3)
 
 self = Cloth(X, T); 
 dt = self.estimateTimeStep(L=0.8)
+self.setSimulatorParameters(dt = dt, thck = 0.9, mu_s = 0.4, tol = 0.0075, shr = 10*1e-4, kappa=0.25*1e-4, kappa_bnd = 0.025*1e-4)
 self.plotMesh()
-self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.4, tol = 0.0075, shr = 5*1e-4, kappa=2.5*1e-4, kappa_bnd = 2.5*1e-4)
 
 tf = int(6/dt)
 inds = [0]

@@ -42,7 +42,7 @@ u = X[inds_ctr]
 start_time = time.time()
 for i in range(1000):
     clothilde.simulate(u = u, control = inds_ctr)
-for i in range(280):
+for i in range(225):
     u = clothilde.positions[inds_ctr]; 
     v = (u[0] - u[1])/np.linalg.norm(u[0]-u[1])
     u[0] -= 0.002*v

@@ -23,7 +23,7 @@ self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.4, str = 0.01*1e-4, k
                             shr = 20*1e-4, tol = 0.0075, kappa = 1.5*1e-4, mu_f = 0.35)
 self.plotMesh()
 tf = int(3/dt)
-inds = [378]; u = self.positions[inds]
+inds = [311]; u = self.positions[inds]
 start_time = time.time()
 for i in range(tf):
     self.simulate(u = u, control = inds)
