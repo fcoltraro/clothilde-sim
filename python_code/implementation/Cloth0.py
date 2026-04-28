@@ -12,36 +12,21 @@ import polyscope as ps
 from line_profiler import profile
 
 class Cloth:
-    def __init__(self,verts,quads,seams=[],name="clothilde"):
-        #topology of the mesh
-        self.quads = np.array(quads) #quadrangulation of the vertices in positions (index based)
-        assert self.quads.shape[1] == 4 and self.quads.ndim == 2, 'Current implementation only supports quad meshes'
-        verts = np.array(verts, order = 'F')
-        assert verts.shape[1] == 3 and verts.ndim == 2, 'Something is wrong with the vertices dimensions'
-
-        #triangulation of quad mesh
-        self.q0, self.q1, self.q2, self.q3 = self.quads[:, 0], self.quads[:, 1], self.quads[:, 2], self.quads[:, 3]
-        self.n_verts = verts.shape[0] + self.q0.shape[0]
-        self.qm = np.arange(verts.shape[0], self.n_verts)
-        #triangulation of the vertices in positions (index based)
-        self.faces = np.vstack([
-            np.column_stack([self.q0, self.q1, self.qm]),
-            np.column_stack([self.q1, self.q2, self.qm]),
-            np.column_stack([self.q2, self.q3, self.qm]),
-            np.column_stack([self.q3, self.q0, self.qm]),
-        ])
-        verts_m = 0.25*(verts[self.q0] + verts[self.q1] + verts[self.q2] +verts[self.q3])
-
+    def __init__(self,verts,faces,seams=[],name="clothilde"):
         #positions and velocities
-        self.positions = np.vstack([verts,verts_m]) #current position of the vertices of the mesh      
+        self.positions = np.array(verts, order = 'F') #current position of the vertices of the mesh
+        assert self.positions.shape[1] == 3 and self.positions.ndim == 2, 'Something is wrong with the vertices dimensions'
         self.velocities = np.zeros(self.positions.shape, order = 'F') + 1e-12 #current velocities of the vertices of the mesh
         self.history_pos = [self.positions] #history of the vertices of the mesh 
         self.history_vel = [self.velocities] #history of the velocities of the vertices of the mesh 
         #self.positions += 0.0001*np.random.randn(self.positions.shape[0],3) #avoid singular flat case
 
-        
+        #topology of the mesh
+        self.faces = np.array(faces) #quadrangulation of the vertices in positions (index based)
+        assert self.faces.shape[1] == 4 and self.faces.ndim == 2, 'Current implementation only supports quad meshes'
         self.edges = [] #list of unoriented edges in set form
         self.edges_matrix = np.zeros([0,2]) #edges in matrix form for efficient computations
+        self.n_verts = self.positions.shape[0]
         self.n_faces = self.faces.shape[0]
         self.n_edges = 0
         #TODO: check euler characteristic of each connected component and assert it should be contractible?
@@ -67,7 +52,7 @@ class Cloth:
 
         #for self-collisions
         self.rad = None #radious of the balls
-        self.last_check = np.array(self.positions, order = 'F') #for checking close self-collision pairs
+        self.last_check = np.array(verts, order = 'F') #for checking close self-collision pairs
         self.den_last = 1
         self.kn = 12 #get k nearest nodes to every node
         self.nodes = np.arange(self.n_verts) #needed for proximity detection
@@ -124,7 +109,7 @@ class Cloth:
         self.warning = False
 
     def __repr__(self):
-        return f"Cloth({self.n_verts} vertices, {self.faces.shape[0]} faces)"
+        return f"Cloth({self.n_verts} vertices, {self.faces.shape[0]} quads)"
     
     class ReferenceElement:
         def __init__(self, type):
@@ -162,16 +147,17 @@ class Cloth:
     
     def prepareSimulation(self):
         # compute all auxiliar objects for fast simulation
-        self.checkMesh()
+        self.checkQuadMesh()
         self.computeEdges()
         self.buildShareEdgeMatrix()
         self.buildAdjacencyMatrices()
         self.computeBoundary()
+        self.triangulateQuadMesh()
         self.prepareMatrices()
         self.computeStretchShear()
         self.precomputeBoundaryBending()
 
-    def checkMesh(self):
+    def checkQuadMesh(self):
         pass
         #TODO check that every quad mesh element is well ordered
 
@@ -238,13 +224,13 @@ class Cloth:
             self.A1 = sp.coo_matrix((data, (row, col)), shape=(self.n_faces, self.n_edges)).tocsr()
 
         if self.A2 is None:
-            row = np.array(range(self.n_faces)); row = np.concatenate((row, row, row))
-            col = np.concatenate((self.faces[:,0],self.faces[:,1],self.faces[:,2]))
+            row = np.array(range(self.n_faces)); row = np.concatenate((row, row, row, row))
+            col = np.concatenate((self.faces[:,0],self.faces[:,1],self.faces[:,2],self.faces[:,3]))
             data = np.ones_like(row)
             self.A2 = sp.coo_matrix((data, (row, col)), shape=(self.n_faces, self.n_verts)).tocsr()
             self.A2t = self.A2.T.tocsr()
             self.nodes_faces_count = np.array(self.A2.sum(axis=0))[0]
-            #self.Am = sp.vstack([sp.eye(self.n_verts),0.25*self.A2]).tocsr() #for plotting
+            self.Am = sp.vstack([sp.eye(self.n_verts),0.25*self.A2]).tocsr() #for plotting
 
     def computeBoundary(self):
         sumCols = np.array(self.A1.T.sum(axis=1))
@@ -306,7 +292,6 @@ class Cloth:
             #self.M_inv = sp.block_diag((M_inv, M_inv, M_inv))
             #self.m_inv = np.concatenate([m_inv, m_inv, m_inv]) #vector form
             self.m_inv = m_inv
-            self.w_c = self.m_inv.copy()
             self.m_inv_mat = self.m_inv[:,np.newaxis] #column matrix
             self.M_lum = sp.block_diag((M_lum, M_lum, M_lum)).tocsc()
             self.m_lum = m_lum[:,np.newaxis] #vector form
@@ -413,7 +398,7 @@ class Cloth:
         neighs_xi = {i: set() for i in range(self.n_verts)}
         neighs_eta = {i: set() for i in range(self.n_verts)}
 
-        for face in self.quads:
+        for face in self.faces:
             #direction xi
             neighs_xi[face[0]].add(face[1])
             neighs_xi[face[1]].add(face[0])
@@ -425,25 +410,33 @@ class Cloth:
             neighs_eta[face[1]].add(face[2])
             neighs_eta[face[2]].add(face[1])
 
+        neighs_shear = []
+        corners_shear = []
         self.corners = []
         for n in range(self.n_verts):
-            if len(neighs_xi[n]) == 1 and len(neighs_eta[n]) == 1:
+            if len(neighs_xi[n]) == 2 and len(neighs_eta[n]) == 2:       
+                neighs_shear.append(list(neighs_xi[n]) + list(neighs_eta[n]))
+            elif len(neighs_xi[n]) == 2 and len(neighs_eta[n]) == 1:
+                neighs_shear.append([n] + list(neighs_eta[n]) + list(neighs_xi[n]))
+            elif len(neighs_xi[n]) == 1 and len(neighs_eta[n]) == 2:
+                neighs_shear.append([n] + list(neighs_xi[n]) + list(neighs_eta[n]))
+            elif len(neighs_xi[n]) == 1 and len(neighs_eta[n]) == 1:
+                corners_shear.append([n] + list(neighs_xi[n]) + [n] + list(neighs_eta[n]))
                 self.corners.append(n)
-        
-        bars = np.vstack([self.quads[:,[0,1]],self.quads[:,[1,2]],
-                          self.quads[:,[2,3]],self.quads[:,[3,0]]])
-        self.bars = np.unique(np.sort(bars, axis = 1),axis=0)
 
-        self.bars_d = np.vstack([
-                    np.column_stack([self.q0, self.qm]),
-                    np.column_stack([self.q1, self.qm]),
-                    np.column_stack([self.q2, self.qm]),
-                    np.column_stack([self.q3, self.qm]),
-                ])
+        bars = np.vstack([self.faces[:,[0,1]],self.faces[:,[1,2]],
+                          self.faces[:,[2,3]],self.faces[:,[3,0]]])
+        bars = np.unique(np.sort(bars, axis = 1),axis=0)
+
+        #remove constraints from the seams
+        shear_neighs = np.array(neighs_shear)
+        shear_corners = np.array(corners_shear)
+        if shear_corners.shape[0] == 0:
+           shear_corners = np.zeros((0,4),dtype=int)
 
         #inititate the class    
-        self.stretch = self.Stretch(self.bars, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
-        self.shear = self.Stretch(self.bars_d, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
+        self.stretch = self.Stretch(bars, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
+        self.shear = self.Shear(shear_neighs, shear_corners, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
 
     class Stretch:
         def __init__(self, bars, X, n_verts, m_sqrt, seams, IJKs):
@@ -627,7 +620,7 @@ class Cloth:
         self.polyscoped = True
         ps.init()
         ps.remove_all_structures()
-        ps.register_surface_mesh(self.label, self.positions, self.faces, smooth_shade=True, transparency=0.9, edge_width = 0)
+        ps.register_surface_mesh(self.label, self.Am@self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
         ps.register_point_cloud(self.label, self.positions, enabled = False)
         ps.set_up_dir("z_up")
         ps.set_ground_plane_mode("tile_reflection")  # set +Z as up direction
@@ -638,7 +631,7 @@ class Cloth:
         if self.polyscoped is False:
             self.preparePolyscope()
         """Plot the current mesh"""
-        ps.get_surface_mesh(self.label).update_vertex_positions(self.positions)
+        ps.get_surface_mesh(self.label).update_vertex_positions(self.Am@self.positions)
         ps.get_point_cloud(self.label).update_point_positions(self.positions)
         if self.rad is not None:
            ps.get_point_cloud(self.label).set_radius(rad=self.rad,relative=False)
@@ -654,7 +647,10 @@ class Cloth:
         def goThroughHistory():
             # Update Polyscope visualization
             phi_mat = self.history_pos[self.ps_frame]
-            ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
+            phi_all = self.Am@phi_mat
+            for _ in range(smooth):
+                phi_all = self.S@phi_all
+            ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
             ps.get_point_cloud(self.label).update_point_positions(phi_mat)
 
             # Advance simulation time by skipping frames accordingly
@@ -665,7 +661,10 @@ class Cloth:
                 else:
                    #display last frame before stopping
                    phi_mat = self.history_pos[-1]
-                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
+                   phi_all = self.Am@phi_mat
+                   for _ in range(smooth):
+                       phi_all = self.S@phi_all
+                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
                    ps.get_point_cloud(self.label).update_point_positions(phi_mat)
                    ps.clear_user_callback()
 
@@ -704,25 +703,21 @@ class Cloth:
 
     def computeRadiouses(self):
         #lenght of edges of the quad mesh
-        e0 = self.bars[:,0]; e1 = self.bars[:,1]
+        e0 = self.edges_matrix[:,0]; e1 = self.edges_matrix[:,1]
         longs = self.computeNorm(self.positions[e1]-self.positions[e0])
         min_l = np.min(longs); max_l = np.max(longs)
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
         assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
-        """
         #take into account diagonals
         d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
         diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
-        """
         #constant radious of the balls
-        e0 = self.bars_d[:,0]; e1 = self.bars_d[:,1]
-        longs_d = self.computeNorm(self.positions[e1]-self.positions[e0])
-        self.rad = self.thck*np.mean(longs_d)/2.05
+        self.rad = self.thck*np.mean(longs)/2.05
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
-        """
+        
         #reduce in case it is too big
         sum_rads = np.minimum(2*self.rad,0.976*longs)
         matrix_rads[e0,e1] = sum_rads; matrix_rads[e1,e0] = sum_rads   
@@ -731,21 +726,10 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
-        """
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
         self.rads_vec0 = self.rad*np.ones((self.n_verts,),dtype=float)
         self.rads_vec = self.rads_vec0.copy()
-
-        #rest lenghts triang
-        self.diag0 = self.innerProduct(self.positions[self.q0]-self.positions[self.qm],
-                                       self.positions[self.q0]-self.positions[self.qm])
-        self.diag1 = self.innerProduct(self.positions[self.q1]-self.positions[self.qm],
-                                       self.positions[self.q1]-self.positions[self.qm])
-        self.diag2 = self.innerProduct(self.positions[self.q2]-self.positions[self.qm],
-                                       self.positions[self.q2]-self.positions[self.qm])
-        self.diag3 = self.innerProduct(self.positions[self.q3]-self.positions[self.qm],
-                                       self.positions[self.q3]-self.positions[self.qm])
 
  
     def setSimulatorParameters(self, dt = 0.0025, tol = 0.0075, 
@@ -908,7 +892,7 @@ class Cloth:
         dlt_tot = np.zeros((self.n_verts,3))
         np.add.at(dlt_tot,b_col,dlt2); 
         dlt_phi = wa*dlt_tot
-        
+
         #iterative process
         error_l = -1; ii = 0
         while error_l < -self.tol and ii < max_iter:  
@@ -1002,7 +986,16 @@ class Cloth:
             gv = np.array(groups[reps[v]], dtype=int)
             share_edge[np.ix_(gu, gv)] = True
             share_edge[np.ix_(gv, gu)] = True
+        
+        """
+        bars_diags = np.vstack([self.faces[:,[0,2]],self.faces[:,[1,3]]])
 
+        for u, v in bars_diags:
+            gu = np.array(groups[reps[u]], dtype=int)
+            gv = np.array(groups[reps[v]], dtype=int)
+            share_edge[np.ix_(gu, gv)] = True
+            share_edge[np.ix_(gv, gu)] = True
+        """
         self.share_edge = share_edge
     
     @profile
@@ -1025,8 +1018,8 @@ class Cloth:
         mask3 = ~self.share_control[ni,nj]
         ni = ni[mask3]; nj = nj[mask3]
         #set radiouses to avoid jitering when the balls are too big
-        #self.rads = self.matrix_rads[ni,nj]
-        self.rads = self.rads_vec[ni] + self.rads_vec[nj]
+        self.rads = self.matrix_rads[ni,nj]
+        #self.rads = self.rads_vec[ni] + self.rads_vec[nj]
         #potential colliding nodes-nodes
         self.near_nn0 = ni; self.near_nn1 = nj
 
@@ -1132,15 +1125,13 @@ class Cloth:
         if self.control != control:
             #update internal variables
             self.control = control
-            self.w_c = self.m_inv.copy()
-            self.w_c[self.control] = 0
             self.update_chol = True
             #controlled nodes do not collide between themselves
             self.share_control[:] = False
             self.share_control[np.ix_(control, control)] = True
             #grasped nodes become bigger for selfcollisions
-            self.rads_vec = self.rads_vec0.copy()
-            self.rads_vec[control] *= 2
+            #self.rads_vec = self.rads_vec0.copy()
+            #self.rads_vec[control] *= 2
             if n_ctr > 0:
                 Iu = np.arange(3*n_ctr)
                 Ju = np.concatenate((control, [x+self.n_verts for x in control], [x+2*self.n_verts for x in control]))
@@ -1150,33 +1141,6 @@ class Cloth:
             self.shear.update_u(Iu,Ju,Ku)
             self.stretch.update_u(Iu,Ju,Ku)
         return u, u_mat, n_ctr
-    @profile
-    def xpbd_edges_squared(self,phi,e0,e1,val0,lambdas,w):
-       
-        phi_mat = phi.reshape((self.n_verts, 3), order='F') 
-
-        xi = phi_mat[e0]
-        xj = phi_mat[e1]
-
-        d = xi - xj
-        d2 = self.innerProduct(d,d)
-
-        C = d2 - val0
-
-        wi = w[e0]
-        wj = w[e1]
-
-        denom = 4 * d2 * (wi + wj) + self.shr
-
-        dlambda = -(C + self.shr * lambdas) / denom
-        lambdas += + dlambda
-
-        corr = 2 * d * dlambda[:, None]
-
-        phi_mat[e0] += wi[:, None] * corr
-        phi_mat[e1] -= wj[:, None] * corr
-
-        return phi_mat.flatten(order='F'), lambdas
 
 
     @profile
@@ -1191,36 +1155,26 @@ class Cloth:
         phi = self.unconstrainedStep(self.implicitEuler)
 
         #lagrange multipliers for the shear and stretch constraints
-        #lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
-        lambda_shr0 = np.zeros((self.quads.shape[0],)); 
-        lambda_shr1 = np.zeros((self.quads.shape[0],)); 
-        lambda_shr2 = np.zeros((self.quads.shape[0],)); 
-        lambda_shr3 = np.zeros((self.quads.shape[0],)); 
-
+        lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
         lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
 
         #solver variables for inextensiblity 
         n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_slf = -np.inf
 
-        while (error_str > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
-            """
+        while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
+
             #shearing
             phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
-                                                                lambda_shr,self.shr,0,0)
-            """
-            #control constraints
-            phi = self.projectControl(phi,u_mat,control,n_ctr)
-
-            phi, lambda_shr0 = self.xpbd_edges_squared(phi,self.q0,self.qm,self.diag0,lambda_shr0,self.w_c)
-            phi, lambda_shr1 = self.xpbd_edges_squared(phi,self.q1,self.qm,self.diag1,lambda_shr1,self.w_c)
-            phi, lambda_shr2 = self.xpbd_edges_squared(phi,self.q2,self.qm,self.diag2,lambda_shr2,self.w_c)
-            phi, lambda_shr3 = self.xpbd_edges_squared(phi,self.q3,self.qm,self.diag3,lambda_shr3,self.w_c)
+                                                                lambda_shr,self.shr,0.005,n_iter%3)
 
             #stretching
             phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
                                                                 lambda_str,self.str,0,0)   
             
-            #print(error_str)
+
+            #control constraints
+            #phi = self.projectControl(phi,u_mat,control,n_ctr)
+            
             #self-collisions
             phi = self.selfCollisions(phi,n_iter); 
 
