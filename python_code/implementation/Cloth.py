@@ -12,12 +12,14 @@ import polyscope as ps
 from line_profiler import profile
 
 class Cloth:
-    def __init__(self,verts,quads,seams=[],name="clothilde"):
+    def __init__(self,verts,quads,seams=[],name="clothilde", sets = []):
         #topology of the mesh
         self.quads = np.array(quads) #quadrangulation of the vertices in positions (index based)
+        self.n_quads = self.quads.shape[0]
         assert self.quads.shape[1] == 4 and self.quads.ndim == 2, 'Current implementation only supports quad meshes'
         verts = np.array(verts, order = 'F')
         assert verts.shape[1] == 3 and verts.ndim == 2, 'Something is wrong with the vertices dimensions'
+        self.edge_sets = sets
 
         #triangulation of quad mesh
         self.q0, self.q1, self.q2, self.q3 = self.quads[:, 0], self.quads[:, 1], self.quads[:, 2], self.quads[:, 3]
@@ -738,14 +740,40 @@ class Cloth:
         self.rads_vec = self.rads_vec0.copy()
 
         #rest lenghts triang
-        self.diag0 = self.innerProduct(self.positions[self.q0]-self.positions[self.qm],
-                                       self.positions[self.q0]-self.positions[self.qm])
-        self.diag1 = self.innerProduct(self.positions[self.q1]-self.positions[self.qm],
-                                       self.positions[self.q1]-self.positions[self.qm])
-        self.diag2 = self.innerProduct(self.positions[self.q2]-self.positions[self.qm],
-                                       self.positions[self.q2]-self.positions[self.qm])
-        self.diag3 = self.innerProduct(self.positions[self.q3]-self.positions[self.qm],
-                                       self.positions[self.q3]-self.positions[self.qm])
+        self.diag0 = np.sqrt(self.innerProduct(self.positions[self.q0]-self.positions[self.qm],
+                                       self.positions[self.q0]-self.positions[self.qm]))
+        self.diag1 = np.sqrt(self.innerProduct(self.positions[self.q1]-self.positions[self.qm],
+                                       self.positions[self.q1]-self.positions[self.qm]))
+        self.diag2 = np.sqrt(self.innerProduct(self.positions[self.q2]-self.positions[self.qm],
+                                       self.positions[self.q2]-self.positions[self.qm]))
+        self.diag3 = np.sqrt(self.innerProduct(self.positions[self.q3]-self.positions[self.qm],
+                                       self.positions[self.q3]-self.positions[self.qm]))
+        self.diag_all = np.concatenate([self.diag0,self.diag1,self.diag2,self.diag3])
+        self.Q0 = np.concatenate([self.qm,self.qm,self.qm,self.qm])
+        self.Q1 = np.concatenate([self.q0,self.q1,self.q2,self.q3])
+        #indices triang
+        inds = np.arange(4*self.n_quads).reshape((self.n_quads,4),order='F')
+        self.inds0 = inds[:,0]
+        self.inds1 = inds[:,1]
+        self.inds2 = inds[:,2]
+        self.inds3 = inds[:,3]
+
+        #for quad edges
+        self.rest_lengths_sq = [
+            np.sum((self.positions[edges[:, 0]] - self.positions[edges[:, 1]])**2, axis=1)
+            for edges in self.edge_sets]
+        
+        self.rest_lengths = [
+            np.linalg.norm(self.positions[edges[:, 0]] - self.positions[edges[:, 1]], axis=1)
+            for edges in self.edge_sets]
+
+        #indices quads
+        self.inds0q = np.arange(self.edge_sets[0].shape[0])
+        self.inds1q = np.arange(self.edge_sets[1].shape[0]) + self.edge_sets[0].shape[0]
+        self.inds2q = np.arange(self.edge_sets[2].shape[0]) + self.edge_sets[0].shape[0] + self.edge_sets[1].shape[0]
+        self.inds3q = np.arange(self.edge_sets[3].shape[0]) + self.edge_sets[0].shape[0] + self.edge_sets[1].shape[0] + self.edge_sets[2].shape[0]
+
+
 
  
     def setSimulatorParameters(self, dt = 0.0025, tol = 0.0075, 
@@ -911,7 +939,7 @@ class Cloth:
         
         #iterative process
         error_l = -1; ii = 0
-        while error_l < -self.tol and ii < max_iter:  
+        while error_l < -self.tol and ii < 0*max_iter:  
             dlt_xy = dlt_phi[b1_col] - dlt_phi[b0_col]
             dlt_vals = -self.innerProduct(normals,dlt_xy)
             #compute multipliers
@@ -1140,7 +1168,7 @@ class Cloth:
             self.share_control[np.ix_(control, control)] = True
             #grasped nodes become bigger for selfcollisions
             self.rads_vec = self.rads_vec0.copy()
-            self.rads_vec[control] *= 2
+            #self.rads_vec[control] *= 2
             if n_ctr > 0:
                 Iu = np.arange(3*n_ctr)
                 Ju = np.concatenate((control, [x+self.n_verts for x in control], [x+2*self.n_verts for x in control]))
@@ -1150,33 +1178,61 @@ class Cloth:
             self.shear.update_u(Iu,Ju,Ku)
             self.stretch.update_u(Iu,Ju,Ku)
         return u, u_mat, n_ctr
+    
     @profile
-    def xpbd_edges_squared(self,phi,e0,e1,val0,lambdas,w):
+    def xpbd_edges(self,phi_mat,e0,e1,val0,lambdas,w,inds,alpha):
        
-        phi_mat = phi.reshape((self.n_verts, 3), order='F') 
-
         xi = phi_mat[e0]
         xj = phi_mat[e1]
 
         d = xi - xj
-        d2 = self.innerProduct(d,d)
-
-        C = d2 - val0
+        length = self.computeNorm(d)
+        n = d / (length[:, None] + 1e-12)
+        C = length - val0
 
         wi = w[e0]
         wj = w[e1]
 
-        denom = 4 * d2 * (wi + wj) + self.shr
+        denom = wi + wj + alpha
 
-        dlambda = -(C + self.shr * lambdas) / denom
-        lambdas += + dlambda
+        dlambda = -(C + alpha * lambdas[inds]) / denom
+        lambdas[inds] += dlambda
 
-        corr = 2 * d * dlambda[:, None]
+        corr = dlambda[:, None]*n
 
         phi_mat[e0] += wi[:, None] * corr
         phi_mat[e1] -= wj[:, None] * corr
 
-        return phi_mat.flatten(order='F'), lambdas
+        return phi_mat, lambdas
+    @profile
+    def xpbd_edges_jacobi(self, phi_mat, e0, e1, val0, lambdas, w, alpha):
+        xi = phi_mat[e0]
+        xj = phi_mat[e1]
+
+        d = xi - xj
+        length = self.computeNorm(d)
+        n = d / (length[:, None] + 1e-12)
+
+        C = length - val0
+
+        wi = w[e0]
+        wj = w[e1]
+
+        denom = wi + wj + alpha
+
+        dlambda = -(C + alpha * lambdas) / denom
+
+        # Jacobi lambda update
+        lambdas += dlambda
+
+        corr = dlambda[:, None] * n
+
+        # Accumulate all position corrections before applying them
+
+        np.add.at(phi_mat, e0,  wi[:, None] * corr)
+        np.add.at(phi_mat, e1, -wj[:, None] * corr)
+
+        return phi_mat, lambdas
 
 
     @profile
@@ -1192,34 +1248,49 @@ class Cloth:
 
         #lagrange multipliers for the shear and stretch constraints
         #lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
-        lambda_shr0 = np.zeros((self.quads.shape[0],)); 
-        lambda_shr1 = np.zeros((self.quads.shape[0],)); 
-        lambda_shr2 = np.zeros((self.quads.shape[0],)); 
-        lambda_shr3 = np.zeros((self.quads.shape[0],)); 
-
-        lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
+        lambda_shr = np.zeros((4*self.n_quads,)); 
+        lambda_str = np.zeros((self.edge_sets[0].shape[0]+self.edge_sets[1].shape[0]+self.edge_sets[2].shape[0]+self.edge_sets[3].shape[0],)); 
+        #lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
 
         #solver variables for inextensiblity 
         n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_slf = -np.inf
 
-        while (error_str > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
+        #while (error_str > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
+        for _ in range(1):   
+        #while  (error_shr > self.tol):
             """
-            #shearing
             phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
                                                                 lambda_shr,self.shr,0,0)
             """
             #control constraints
             phi = self.projectControl(phi,u_mat,control,n_ctr)
-
-            phi, lambda_shr0 = self.xpbd_edges_squared(phi,self.q0,self.qm,self.diag0,lambda_shr0,self.w_c)
-            phi, lambda_shr1 = self.xpbd_edges_squared(phi,self.q1,self.qm,self.diag1,lambda_shr1,self.w_c)
-            phi, lambda_shr2 = self.xpbd_edges_squared(phi,self.q2,self.qm,self.diag2,lambda_shr2,self.w_c)
-            phi, lambda_shr3 = self.xpbd_edges_squared(phi,self.q3,self.qm,self.diag3,lambda_shr3,self.w_c)
-
+            
+            #shearing
+            phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+            #phi_mat, lambda_shr = self.xpbd_edges_jacobi(phi_mat,self.Q0,self.Q1,self.diag_all,lambda_shr,self.w_c,self.shr)
+            for _ in range(1):
+                phi_mat, lambda_shr = self.xpbd_edges(phi_mat,self.q0,self.qm,self.diag0,lambda_shr,self.w_c,self.inds0,self.shr)
+                phi_mat, lambda_shr = self.xpbd_edges(phi_mat,self.q1,self.qm,self.diag1,lambda_shr,self.w_c,self.inds1,self.shr)
+                phi_mat, lambda_shr = self.xpbd_edges(phi_mat,self.q2,self.qm,self.diag2,lambda_shr,self.w_c,self.inds2,self.shr)
+                phi_mat, lambda_shr = self.xpbd_edges(phi_mat,self.q3,self.qm,self.diag3,lambda_shr,self.w_c,self.inds3,self.shr)
+            #error shearing
+            """
+            diff_shr = phi_mat[self.Q0] - phi_mat[self.Q1]
+            val_shr = self.computeNorm(diff_shr) - self.diag_all
+            aux_error = (val_shr + self.shr*lambda_shr)/(self.diag_all)
+            error_shr = np.linalg.norm(aux_error,ord=np.inf) 
+            print(error_shr)          
+            
             #stretching
             phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
                                                                 lambda_str,self.str,0,0)   
-            
+            """
+            for _ in range(1):
+                phi_mat, lambda_str = self.xpbd_edges(phi_mat,self.edge_sets[0][:,0],self.edge_sets[0][:,1],self.rest_lengths[0],lambda_str,self.w_c,self.inds0q,self.str)
+                phi_mat, lambda_str = self.xpbd_edges(phi_mat,self.edge_sets[1][:,0],self.edge_sets[1][:,1],self.rest_lengths[1],lambda_str,self.w_c,self.inds1q,self.str)
+                phi_mat, lambda_str = self.xpbd_edges(phi_mat,self.edge_sets[2][:,0],self.edge_sets[2][:,1],self.rest_lengths[2],lambda_str,self.w_c,self.inds2q,self.str)
+                phi_mat, lambda_str = self.xpbd_edges(phi_mat,self.edge_sets[3][:,0],self.edge_sets[3][:,1],self.rest_lengths[3],lambda_str,self.w_c,self.inds3q,self.str)
+            phi = phi_mat.flatten(order='F') 
             #print(error_str)
             #self-collisions
             phi = self.selfCollisions(phi,n_iter); 

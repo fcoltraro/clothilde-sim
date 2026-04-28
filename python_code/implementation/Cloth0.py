@@ -12,7 +12,7 @@ import polyscope as ps
 from line_profiler import profile
 
 class Cloth:
-    def __init__(self,verts,faces,seams=[],name="clothilde"):
+    def __init__(self,verts,faces,seams=[],name="clothilde", sets = []):
         #positions and velocities
         self.positions = np.array(verts, order = 'F') #current position of the vertices of the mesh
         assert self.positions.shape[1] == 3 and self.positions.ndim == 2, 'Something is wrong with the vertices dimensions'
@@ -1163,17 +1163,18 @@ class Cloth:
 
         while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
 
+
+            #control constraints
+            phi = self.projectControl(phi,u_mat,control,n_ctr)
+
             #shearing
             phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
-                                                                lambda_shr,self.shr,0.005,n_iter%3)
+                                                                lambda_shr,self.shr,0.005,n_iter)
 
             #stretching
             phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
                                                                 lambda_str,self.str,0,0)   
             
-
-            #control constraints
-            #phi = self.projectControl(phi,u_mat,control,n_ctr)
             
             #self-collisions
             phi = self.selfCollisions(phi,n_iter); 

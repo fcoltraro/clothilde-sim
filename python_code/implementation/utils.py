@@ -39,6 +39,41 @@ def createRectangularMesh(a,b,na,nb,h = 0.5):
     X, T = createMesh(rect, na, nb, f1, f2, f3)   
     return X, T  
 
+def colored_grid_edges(npx, npy):
+    """
+    Returns 4 disjoint edge sets for a structured npx x npy grid.
+    Each set is a matching: no two edges in the same set share a node.
+
+    Node index:
+        k = row * npx + col
+    """
+
+    edge_sets = []
+
+    # Horizontal edges: (i,j) -- (i,j+1)
+    rows, cols = np.indices((npy, npx - 1))
+    left = rows * npx + cols
+    right = left + 1
+
+    horizontal = np.stack([left.ravel(), right.ravel()], axis=1)
+    horizontal_color = cols.ravel() % 2
+
+    edge_sets.append(horizontal[horizontal_color == 0])
+    edge_sets.append(horizontal[horizontal_color == 1])
+
+    # Vertical edges: (i,j) -- (i+1,j)
+    rows, cols = np.indices((npy - 1, npx))
+    bottom = rows * npx + cols
+    top = bottom + npx
+
+    vertical = np.stack([bottom.ravel(), top.ravel()], axis=1)
+    vertical_color = rows.ravel() % 2
+
+    edge_sets.append(vertical[vertical_color == 0])
+    edge_sets.append(vertical[vertical_color == 1])
+
+    return edge_sets
+
 def quad_cylinder_mesh(R, H, h, f=1.0):
     """
     Quad mesh of a (possibly flattened) cylinder.

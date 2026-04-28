@@ -3,20 +3,21 @@ notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
 from implementation.Cloth import Cloth 
-from implementation.utils import createRectangularMesh
+from implementation.utils import createRectangularMesh, colored_grid_edges
 import numpy as np
 #np.set_printoptions(threshold=sys.maxsize)
 import time
 
 na = 35; nb = 20
-X, T = createRectangularMesh(a = 0.9,b = 0.5, na = na, nb = nb, h = 0.05)
-X[:,2] += 0.6; #adjust height
+X, T = createRectangularMesh(a = 0.9,b = 0.5, na = na, nb = nb, h = 0.01)
+edge_sets = colored_grid_edges(na, nb)
+X[:,2] += 0.7; #adjust height
 
-clothilde = Cloth(X, T)
-
+clothilde = Cloth(X, T, sets = edge_sets)
+clothilde.plotMesh()
 # solver parameters
 dt = 0.002 #time step
-tol = 0.0095 # up to 0.75% of relative error in constraint satisfaction to stop iterations
+tol = 0.0075 # up to 0.75% of relative error in constraint satisfaction to stop iterations
 
 #physical parameters
 rho = 0.1 #cloth density
@@ -24,11 +25,11 @@ delta = 0.08 # aerodynamics parameter: between 0 and rho
 kappa = 0.25*1e-4 # stifness or bending resistance
 kappa_bnd = 0.01*1e-4 # stifness or bending resistance
 alpha = 0.2 #damping of oscillations
-shr = 5*1e-4 #allowed shearing resistance
-str = 0.005*1e-4 #allowed stretching resistance
+shr = 0.5*1e-4 #allowed shearing resistance
+str = 0.01*1e-4 #allowed stretching resistance
 mu_f = 0.45 #friction with the floor
 mu_s = 0.35 #friction with the cloth itself
-thck = 0.95 #size of the balls
+thck = 1.2 #size of the balls
 
 clothilde.setSimulatorParameters(dt=dt,tol=tol,
                                 rho=rho,delta=delta,kappa=kappa,kappa_bnd = kappa_bnd, shr=shr,
@@ -40,7 +41,8 @@ inds_ctr = [0,na-1]
 u = X[inds_ctr]
 
 start_time = time.time()
-for i in range(1000):
+for i in range(2000):
+    print(i)
     clothilde.simulate(u = u, control = inds_ctr)
 u = clothilde.positions[inds_ctr]; 
 for i in range(tf):
