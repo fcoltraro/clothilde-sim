@@ -883,7 +883,8 @@ class Cloth:
 
         #initial impulses
         num = -self.vals_slf[self.ind_slf]; 
-        den = w[b0_col] + w[b1_col] 
+        alpha = 0.001/(self.dt**2)
+        den = w[b0_col] + w[b1_col] + alpha
         landa = np.maximum(0,num/den)
         #corrections
         dlt = landa[:,np.newaxis]*normals
@@ -899,7 +900,7 @@ class Cloth:
             dlt_xy = dlt_phi[b1_col] - dlt_phi[b0_col]
             dlt_vals = -self.innerProduct(normals,dlt_xy)
             #compute multipliers
-            res = (num + dlt_vals)
+            res = (num + dlt_vals) - alpha*landa
             error_l = np.min(-res/rads)
             landa = np.maximum(0, landa + res/den)
             #corrections
@@ -910,7 +911,7 @@ class Cloth:
             np.add.at(dlt_tot,b_col,dlt2); 
             dlt_phi = wa*dlt_tot
             ii += 1
-        #print(ii)
+        print(ii)
         return dlt_phi.flatten(order='F')
 
 
@@ -928,13 +929,21 @@ class Cloth:
             self.ind_slf = self.unionMask(self.ind_slf,ind_s)
             #correct positions
             dlt_phi = self.solveLCP(max_iters)
-            phi += dlt_phi
+            
+            #lets project into stretch space
+            b = -self.stretch.grad@dlt_phi
+            dlt_lambda = self.stretch.factor(b)
+            prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
+            dlt_phi = 0.5*dlt_phi + 0.5*prj_dlt_phi
+            
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
-                F_mu = self.computeFrictionCorrection(phi,dlt_phi)
-                phi += F_mu
-            #check for possible new selfcollisions
-            #self.updateSelfCollisions(phi)
+                F_mu = self.computeFrictionCorrection(phi + dlt_phi,dlt_phi)
+            else:
+                F_mu = 0*phi
+
+            #update phi
+            phi += dlt_phi + F_mu
             
         return phi
     
@@ -1151,18 +1160,18 @@ class Cloth:
                 #shearing
                 phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
                                                                     lambda_shr,self.shr,0.005,s%5)
+                
 
                 #stretching
                 phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
-                                                                    lambda_str,self.str,0,0)   
-                
+                                                                    lambda_str,self.str,0,0)  
                 
                 #self-collisions
-                phi = self.selfCollisions(phi,n_iter); 
+                phi = self.selfCollisions(phi,n_iter);                 
 
                 #iteration count 
                 n_iter += 1
-            #print(n_iter)
+                
 
             #floor collisions
             phi = self.floorCollisions(phi)

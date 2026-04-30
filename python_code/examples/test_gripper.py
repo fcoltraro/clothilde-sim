@@ -20,8 +20,8 @@ from implementation.Gripper import (
 import numpy as np
 import trimesh
 
-na = 20
-nb = 20
+na = 30
+nb = 30
 np.random.seed(1)
 
 X, T = createRectangularMesh(a=0.8, b=0.8, na=na, nb=nb, h=0.2)
@@ -29,9 +29,7 @@ X[:, 2] += 0.7
 X += 0.0001 * np.random.randn(X.shape[0], 3)
 
 cloth = Cloth(X, T)
-dt = cloth.estimateTimeStep(L=0.8)
-# cloth.setSimulatorParameters(dt=dt, shr=0.1 * 0.0001, str=0.001 * 0.0001)
-cloth.setSimulatorParameters(dt=1/60,sub_steps=6)
+cloth.setSimulatorParameters(dt=1/60,sub_steps=8,mu_s=0.45)
 
 # mu_s=0.45, kappa=0.1 * 0.0001 
 cloth.plotMesh()
