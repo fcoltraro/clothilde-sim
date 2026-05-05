@@ -732,7 +732,7 @@ class Cloth:
     def setSimulatorParameters(self, dt = 1/60, tol = 0.0075, sub_steps = 10,
                                rho = 0.1, delta = 0.1, alpha = 0.2,
                                kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
-                               str = 0.01*1e-4, shr = 10*1e-4,
+                               str = 0.01*1e-4, shr = 10*1e-4, slf = 1*1e-4,
                                mu_f = 0.2, mu_s = 0.35, thck = 0.95):
         #solver parameters
         self.frame_rate = dt #desired frame rate
@@ -752,6 +752,7 @@ class Cloth:
         self.beta = 0.02*self.kappa # fast damping: do not change in general
         self.str = str/(self.dt**2) # stretch elasticity
         self.shr = shr/(self.dt**2) # shear elasticity
+        self.slf = slf/(self.dt**2) # self-collisions elasticity
         self.mu_floor = mu_f #friction with to the floor
         self.mu_self = mu_s #friction for self-collisions
 
@@ -883,7 +884,7 @@ class Cloth:
 
         #initial impulses
         num = -self.vals_slf[self.ind_slf]; 
-        den = w[b0_col] + w[b1_col] 
+        den = w[b0_col] + w[b1_col] + self.slf
         landa = np.maximum(0,num/den)
         #corrections
         dlt = landa[:,np.newaxis]*normals
@@ -899,7 +900,7 @@ class Cloth:
             dlt_xy = dlt_phi[b1_col] - dlt_phi[b0_col]
             dlt_vals = -self.innerProduct(normals,dlt_xy)
             #compute multipliers
-            res = (num + dlt_vals)
+            res = num + dlt_vals - self.slf*landa
             error_l = np.min(-res/rads)
             landa = np.maximum(0, landa + res/den)
             #corrections
