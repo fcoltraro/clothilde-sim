@@ -714,6 +714,7 @@ class Cloth:
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
         #constant radious of the balls
         self.rad = self.thck*np.mean(longs)/2.05
+        self.max_step = 0.1*np.mean(longs)
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -883,7 +884,7 @@ class Cloth:
 
         #initial impulses
         num = -self.vals_slf[self.ind_slf]; 
-        alpha = 0.001/(self.dt**2)
+        alpha = 0.01/(self.dt**2)
         den = w[b0_col] + w[b1_col] + alpha
         landa = np.maximum(0,num/den)
         #corrections
@@ -911,7 +912,7 @@ class Cloth:
             np.add.at(dlt_tot,b_col,dlt2); 
             dlt_phi = wa*dlt_tot
             ii += 1
-        print(ii)
+        #print(ii)
         return dlt_phi.flatten(order='F')
 
 
@@ -934,7 +935,7 @@ class Cloth:
             b = -self.stretch.grad@dlt_phi
             dlt_lambda = self.stretch.factor(b)
             prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
-            dlt_phi = 0.5*dlt_phi + 0.5*prj_dlt_phi
+            dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
@@ -1127,6 +1128,19 @@ class Cloth:
             self.shear.update_u(Iu,Ju,Ku)
             self.stretch.update_u(Iu,Ju,Ku)
         return U
+    
+    def limitControlVelocity(self, u_raw):
+        u_raw_mat = u_raw.reshape((len(self.control), 3), order="F")
+
+        u_used = self.positions[self.control]
+
+        du = u_raw_mat - u_used
+        dist = self.computeNorm(du)
+        scale = np.minimum(1.0, self.max_step / (dist + 1e-12))
+
+        u_clmp = u_used + scale[:, None] * du
+
+        return u_clmp.flatten(order="F")
 
 
     @profile
@@ -1143,7 +1157,8 @@ class Cloth:
             phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
 
             #interpolated control
-            u = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+            u_raw = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+            u = self.limitControlVelocity(u_raw)
 
             #unconstrained step to correct
             phi = self.unconstrainedStep(self.implicitEuler)
@@ -1171,6 +1186,8 @@ class Cloth:
 
                 #iteration count 
                 n_iter += 1
+
+            print(n_iter)
                 
 
             #floor collisions
