@@ -714,6 +714,7 @@ class Cloth:
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
         #constant radious of the balls
         self.rad = self.thck*np.mean(longs)/2.05
+        self.max_step = self.max_mov*np.mean(longs)
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -733,7 +734,7 @@ class Cloth:
                                rho = 0.1, delta = 0.1, alpha = 0.2,
                                kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
                                str = 0.01*1e-4, shr = 10*1e-4, slf = 1*1e-4,
-                               mu_f = 0.2, mu_s = 0.35, thck = 0.95):
+                               mu_f = 0.2, mu_s = 0.35, thck = 0.95, max_mov= 0.1):
         #solver parameters
         self.frame_rate = dt #desired frame rate
         self.sub_steps = sub_steps
@@ -758,7 +759,8 @@ class Cloth:
 
         #self-collision parameters
         self.thck = thck
-        self.mov_tol = 0.02 #when some node moves 2% or more than its previous position, run computeClosePairs()
+        self.mov_tol = 0.025 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
+        self.max_mov = max_mov #between 0 and 1 fraction of mean edge length that the control nodes can move in one time step
         self.computeRadiouses()
         self.eps_sus = 3.3*self.rad #threshold for detecting close balls in computeClosePairs()
 
@@ -927,15 +929,23 @@ class Cloth:
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_slf/self.rads) < self.tol)[0]
             self.ind_slf = self.unionMask(self.ind_slf,ind_s)
-            #correct positions
+            #correction for positions
             dlt_phi = self.solveLCP(max_iters)
-            phi += dlt_phi
+            
+            #lets project into stretch space
+            b = -self.stretch.grad@dlt_phi
+            dlt_lambda = self.stretch.factor(b)
+            prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
+            dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
+            
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
-                F_mu = self.computeFrictionCorrection(phi,dlt_phi)
-                phi += F_mu
-            #check for possible new selfcollisions
-            #self.updateSelfCollisions(phi)
+                F_mu = self.computeFrictionCorrection(phi + dlt_phi,dlt_phi)
+            else:
+                F_mu = 0*phi
+
+            #update phi
+            phi += dlt_phi + F_mu
             
         return phi
     
@@ -1119,6 +1129,19 @@ class Cloth:
             self.shear.update_u(Iu,Ju,Ku)
             self.stretch.update_u(Iu,Ju,Ku)
         return U
+    
+    def limitControlVelocity(self, u_raw):
+        u_raw_mat = u_raw.reshape((len(self.control), 3), order="F")
+
+        u_used = self.positions[self.control]
+
+        du = u_raw_mat - u_used
+        dist = self.computeNorm(du)
+        scale = np.minimum(1.0, self.max_step / (dist + 1e-12))
+
+        u_clmp = u_used + scale[:, None] * du
+
+        return u_clmp.flatten(order="F")
 
 
     @profile
@@ -1135,7 +1158,8 @@ class Cloth:
             phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
 
             #interpolated control
-            u = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+            u_raw = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+            u = self.limitControlVelocity(u_raw)
 
             #unconstrained step to correct
             phi = self.unconstrainedStep(self.implicitEuler)
@@ -1163,7 +1187,6 @@ class Cloth:
 
                 #iteration count 
                 n_iter += 1
-            #print(n_iter)
 
             #floor collisions
             phi = self.floorCollisions(phi)

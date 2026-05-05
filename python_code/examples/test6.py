@@ -34,7 +34,7 @@ sub_steps = 10
 clothilde.setSimulatorParameters(dt=dt,tol=tol,sub_steps=sub_steps,
                                 rho=rho,delta=delta,kappa=kappa,kappa_bnd = kappa_bnd, shr=shr,
                                 str=str,alpha=alpha,mu_f=mu_f,mu_s=mu_s,
-                                thck=thck)
+                                thck=thck,max_mov=0.5)
 
 tf = int(2/dt); t = np.linspace(0,2*np.pi,tf); freq = 2
 inds_ctr = [0,na-1]
