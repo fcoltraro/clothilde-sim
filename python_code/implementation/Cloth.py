@@ -700,6 +700,17 @@ class Cloth:
             ps.screenshot(f"frames/frame_{i:03d}.png", transparent_bg=False)
             print("Frame saved:", i)
 
+    def computeNormals(self,phi_mat):
+        p1 = phi_mat[self.f0]
+        p2 = phi_mat[self.f1]
+        p3 = phi_mat[self.f2]
+        p4 = phi_mat[self.f3]
+        phi_xi = p2 - p1 + p3 - p4
+        phi_eta = p3 - p2 + p4 - p1 
+        nu_faces = np.cross(phi_xi,phi_eta)
+        nu = self.A2t@nu_faces
+        self.nu_nodes = self.normalize(nu)
+
 
     def computeRadiouses(self):
         #lenght of edges of the quad mesh
