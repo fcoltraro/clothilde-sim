@@ -714,7 +714,7 @@ class Cloth:
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
         #constant radious of the balls
         self.rad = self.thck*np.mean(longs)/2.05
-        self.max_step = 0.1*np.mean(longs)
+        self.max_step = self.max_mov*np.mean(longs)
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -726,6 +726,34 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
+
+        #edges that share a node
+        S = self.A0 @ self.A0.T
+        ei, ej = S.nonzero()
+        # avoids duplicates and self-pairs
+        mask = ei < ej          
+        ei = ei[mask]
+        ej = ej[mask]
+        # find endpoints that are not shared
+        e0 = self.edges_matrix[ei]
+        e1 = self.edges_matrix[ej]
+        same00 = e0[:, 0] == e1[:, 0]
+        same01 = e0[:, 0] == e1[:, 1]
+        same10 = e0[:, 1] == e1[:, 0]
+        same11 = e0[:, 1] == e1[:, 1]
+        #take the opposites
+        pairs = np.empty((len(ei), 2), dtype=self.edges_matrix.dtype)
+        pairs[same00] = np.column_stack([e0[same00, 1], e1[same00, 1]])
+        pairs[same01] = np.column_stack([e0[same01, 1], e1[same01, 0]])
+        pairs[same10] = np.column_stack([e0[same10, 0], e1[same10, 1]])
+        pairs[same11] = np.column_stack([e0[same11, 0], e1[same11, 0]])
+        #make the pair of nodes unique
+        pairs = np.sort(pairs, axis=1)
+        pairs = np.unique(pairs, axis=0)
+        #reduce their collision radious in half
+        matrix_rads[pairs[:,0],pairs[:,1]] = 0.6*matrix_rads[pairs[:,0],pairs[:,1]]
+        matrix_rads[pairs[:,1],pairs[:,0]] = 0.6*matrix_rads[pairs[:,1],pairs[:,0]]
+
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
 
@@ -733,8 +761,8 @@ class Cloth:
     def setSimulatorParameters(self, dt = 1/60, tol = 0.0075, sub_steps = 10,
                                rho = 0.1, delta = 0.1, alpha = 0.2,
                                kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
-                               str = 0.01*1e-4, shr = 10*1e-4,
-                               mu_f = 0.2, mu_s = 0.35, thck = 0.95):
+                               str = 0.01*1e-4, shr = 10*1e-4, slf = 1*1e-4,
+                               mu_f = 0.2, mu_s = 0.35, thck = 0.95, max_mov= 0.1):
         #solver parameters
         self.frame_rate = dt #desired frame rate
         self.sub_steps = sub_steps
@@ -753,12 +781,14 @@ class Cloth:
         self.beta = 0.02*self.kappa # fast damping: do not change in general
         self.str = str/(self.dt**2) # stretch elasticity
         self.shr = shr/(self.dt**2) # shear elasticity
+        self.slf = slf/(self.dt**2) # self-collisions elasticity
         self.mu_floor = mu_f #friction with to the floor
         self.mu_self = mu_s #friction for self-collisions
 
         #self-collision parameters
         self.thck = thck
         self.mov_tol = 0.025 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
+        self.max_mov = max_mov #between 0 and 1 fraction of mean edge length that the control nodes can move in one time step
         self.computeRadiouses()
         self.eps_sus = 3.3*self.rad #threshold for detecting close balls in computeClosePairs()
 
@@ -884,8 +914,7 @@ class Cloth:
 
         #initial impulses
         num = -self.vals_slf[self.ind_slf]; 
-        alpha = 0.01/(self.dt**2)
-        den = w[b0_col] + w[b1_col] + alpha
+        den = w[b0_col] + w[b1_col] + self.slf
         landa = np.maximum(0,num/den)
         #corrections
         dlt = landa[:,np.newaxis]*normals
@@ -901,7 +930,7 @@ class Cloth:
             dlt_xy = dlt_phi[b1_col] - dlt_phi[b0_col]
             dlt_vals = -self.innerProduct(normals,dlt_xy)
             #compute multipliers
-            res = (num + dlt_vals) - alpha*landa
+            res = num + dlt_vals - self.slf*landa
             error_l = np.min(-res/rads)
             landa = np.maximum(0, landa + res/den)
             #corrections
@@ -928,7 +957,7 @@ class Cloth:
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_slf/self.rads) < self.tol)[0]
             self.ind_slf = self.unionMask(self.ind_slf,ind_s)
-            #correct positions
+            #correction for positions
             dlt_phi = self.solveLCP(max_iters)
             
             #lets project into stretch space
@@ -1175,20 +1204,17 @@ class Cloth:
                 #shearing
                 phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
                                                                     lambda_shr,self.shr,0.005,s%5)
-                
 
                 #stretching
                 phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
-                                                                    lambda_str,self.str,0,0)  
+                                                                    lambda_str,self.str,0,0)   
+                
                 
                 #self-collisions
-                phi = self.selfCollisions(phi,n_iter);                 
+                phi = self.selfCollisions(phi,n_iter); 
 
                 #iteration count 
                 n_iter += 1
-
-            print(n_iter)
-                
 
             #floor collisions
             phi = self.floorCollisions(phi)

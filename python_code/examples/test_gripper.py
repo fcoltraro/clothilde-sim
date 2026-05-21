@@ -29,7 +29,7 @@ X[:, 2] += 0.7
 X += 0.0001 * np.random.randn(X.shape[0], 3)
 
 cloth = Cloth(X, T)
-cloth.setSimulatorParameters(dt=1/60,sub_steps=8,mu_s=0.45)
+cloth.setSimulatorParameters(dt=1/60,sub_steps=8,mu_s=0.4)
 
 # mu_s=0.45, kappa=0.1 * 0.0001 
 cloth.plotMesh()
