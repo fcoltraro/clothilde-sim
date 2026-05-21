@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 # Caida libre
-na = 33; nb = 23
+na = 29; nb = 20
 m = np.int32(np.floor(na/2))
 np.random.seed(1)
 X, T = createRectangularMesh(a = 0.6, b = 0.4, na = na, nb = nb, h = 0.1)
@@ -37,5 +37,5 @@ print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 
-self.makeMovie(speed = 1, repeat = True, smooth = 2)
+self.makeMovie(speed = 1, repeat = False, smooth = 2)
 #kernprof -l -v test4.py > perfil_selfcols4.txt

@@ -726,6 +726,34 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
+
+        #edges that share a node
+        S = self.A0 @ self.A0.T
+        ei, ej = S.nonzero()
+        # avoids duplicates and self-pairs
+        mask = ei < ej          
+        ei = ei[mask]
+        ej = ej[mask]
+        # find endpoints that are not shared
+        e0 = self.edges_matrix[ei]
+        e1 = self.edges_matrix[ej]
+        same00 = e0[:, 0] == e1[:, 0]
+        same01 = e0[:, 0] == e1[:, 1]
+        same10 = e0[:, 1] == e1[:, 0]
+        same11 = e0[:, 1] == e1[:, 1]
+        #take the opposites
+        pairs = np.empty((len(ei), 2), dtype=self.edges_matrix.dtype)
+        pairs[same00] = np.column_stack([e0[same00, 1], e1[same00, 1]])
+        pairs[same01] = np.column_stack([e0[same01, 1], e1[same01, 0]])
+        pairs[same10] = np.column_stack([e0[same10, 0], e1[same10, 1]])
+        pairs[same11] = np.column_stack([e0[same11, 0], e1[same11, 0]])
+        #make the pair of nodes unique
+        pairs = np.sort(pairs, axis=1)
+        pairs = np.unique(pairs, axis=0)
+        #reduce their collision radious in half
+        matrix_rads[pairs[:,0],pairs[:,1]] = matrix_rads[pairs[:,0],pairs[:,1]]/2
+        matrix_rads[pairs[:,1],pairs[:,0]] = matrix_rads[pairs[:,1],pairs[:,0]]/2
+
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
 

@@ -36,7 +36,7 @@ clothilde.setSimulatorParameters(dt=dt,tol=tol,sub_steps=sub_steps,
                                 str=str,alpha=alpha,mu_f=mu_f,mu_s=mu_s,
                                 thck=thck,max_mov=0.5)
 
-tf = int(2/dt); t = np.linspace(0,2*np.pi,tf); freq = 2
+tf = int(2.2/dt); t = np.linspace(0,2*np.pi,tf); freq = 2
 inds_ctr = [0,na-1]
 u = X[inds_ctr]
 
@@ -56,6 +56,6 @@ print('Time:',time.time()-start_time)
 print('Average iterations',clothilde.total_iters/(len(clothilde.history_pos)-1))
 
 
-clothilde.makeMovie(1,True,2)
+clothilde.makeMovie(1,False,2)
 
 #kernprof -l -v test6.py > perfil_selfcols6.txt

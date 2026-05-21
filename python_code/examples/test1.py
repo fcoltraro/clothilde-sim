@@ -19,7 +19,7 @@ self = Cloth(X, T);
 dt = 1/60 
 self.plotMesh()
 self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.3, tol = 0.0075, shr = 5*1e-4, 
-                            kappa=0.1*1e-4, kappa_bnd = 0.01*1e-4, str = 0.005*1e-4, sub_steps=9,slf=0.005)
+                            kappa=0.25*1e-4, kappa_bnd = 0.025*1e-4, str = 0.005*1e-4, sub_steps=9,slf=0.0025)
 
 tf = int(6/dt)
 inds = [0,na-1]
@@ -35,7 +35,7 @@ print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 
-self.makeMovie(speed = 1, repeat = True, smooth = 2)
+self.makeMovie(speed = 1, repeat = False, smooth = 2)
 #self.plotMesh()
 #self.saveFrames(speed = 4)
 
