@@ -736,9 +736,9 @@ class Cloth:
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
         assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
         #take into account diagonals
-        d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
-        diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
-        diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
+        #d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
+        #diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
+        #diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
         #constant radious of the balls
         self.rad = self.thck*np.mean(longs)/2.05
         self.radt2 = self.rad**2
@@ -747,6 +747,7 @@ class Cloth:
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
+        """
         #reduce in case it is too big
         sum_rads = np.minimum(2*self.rad,0.976*longs)
         matrix_rads[e0,e1] = sum_rads; matrix_rads[e1,e0] = sum_rads   
@@ -755,7 +756,7 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
-
+        """
         #edges that share a node
         S = self.A0 @ self.A0.T
         ei, ej = S.nonzero()
