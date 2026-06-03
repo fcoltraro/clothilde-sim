@@ -700,6 +700,33 @@ class Cloth:
             ps.screenshot(f"frames/frame_{i:03d}.png", transparent_bg=False)
             print("Frame saved:", i)
 
+    def computeNormals(self,phi_mat):
+        p1 = phi_mat[self.f0]
+        p2 = phi_mat[self.f1]
+        p3 = phi_mat[self.f2]
+        p4 = phi_mat[self.f3]
+        phi_xi = p2 - p1 + p3 - p4
+        phi_eta = p3 - p2 + p4 - p1 
+        nu_faces = np.cross(phi_xi,phi_eta)
+        nu = self.A2t@nu_faces
+        self.nu_nodes = self.normalize(nu)
+
+    def adjustRadiouses(self,phi_mat):
+        nu_x = self.nu_nodes[self.near_nn0]; 
+        nu_y = self.nu_nodes[self.near_nn1] 
+        xy = phi_mat[self.near_nn1] - phi_mat[self.near_nn0]
+        normal_all = self.normalize(xy)
+        ang_x = self.innerProduct(nu_x,normal_all)**2
+        rad_x = 1/np.sqrt((1 - ang_x)/self.radt2 + (ang_x/self.radn2)) 
+        ang_y = self.innerProduct(nu_y,normal_all)**2
+        rad_y = 1/np.sqrt((1 - ang_y)/self.radt2 + (ang_y/self.radn2))
+        rads0 = self.matrix_rads[self.near_nn0,self.near_nn1]
+        #special case for control
+        self.rads = np.minimum(rad_x + rad_y,rads0)
+        mask0 = np.isin(self.near_nn0, self.control)
+        self.rads[mask0] = 2*self.rad
+        mask1 = np.isin(self.near_nn1, self.control)
+        self.rads[mask1] = 2*self.rad
 
     def computeRadiouses(self):
         #lenght of edges of the quad mesh
@@ -709,15 +736,18 @@ class Cloth:
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
         assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
         #take into account diagonals
-        d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
-        diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
-        diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
+        #d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
+        #diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
+        #diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
         #constant radious of the balls
         self.rad = self.thck*np.mean(longs)/2.05
+        self.radt2 = self.rad**2
+        self.radn2 = (0.6*self.rad)**2
         self.max_step = self.max_mov*np.mean(longs)
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
+        """
         #reduce in case it is too big
         sum_rads = np.minimum(2*self.rad,0.976*longs)
         matrix_rads[e0,e1] = sum_rads; matrix_rads[e1,e0] = sum_rads   
@@ -726,7 +756,7 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
-
+        """
         #edges that share a node
         S = self.A0 @ self.A0.T
         ei, ej = S.nonzero()
@@ -762,7 +792,7 @@ class Cloth:
                                rho = 0.1, delta = 0.1, alpha = 0.2,
                                kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
                                str = 0.01*1e-4, shr = 10*1e-4, slf = 1*1e-4,
-                               mu_f = 0.2, mu_s = 0.35, thck = 0.95):
+                               mu_f = 0.2, mu_s = 0.35, thck = 0.95, max_mov= 0.1):
         #solver parameters
         self.frame_rate = dt #desired frame rate
         self.sub_steps = sub_steps
@@ -787,7 +817,8 @@ class Cloth:
 
         #self-collision parameters
         self.thck = thck
-        self.mov_tol = 0.02 #when some node moves 2% or more than its previous position, run computeClosePairs()
+        self.mov_tol = 0.025 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
+        self.max_mov = max_mov #between 0 and 1 fraction of mean edge length that the control nodes can move in one time step
         self.computeRadiouses()
         self.eps_sus = 3.3*self.rad #threshold for detecting close balls in computeClosePairs()
 
@@ -1047,7 +1078,7 @@ class Cloth:
         mask3 = ~self.share_control[ni,nj]
         ni = ni[mask3]; nj = nj[mask3]
         #set radiouses to avoid jitering when the balls are too big
-        self.rads = self.matrix_rads[ni,nj]
+        #self.rads = self.matrix_rads[ni,nj]
         #potential colliding nodes-nodes
         self.near_nn0 = ni; self.near_nn1 = nj
 
@@ -1063,6 +1094,8 @@ class Cloth:
             self.computeClosePairs(phi_mat) #update close pairs
             self.last_check = phi_mat #update last checked mesh
             self.den_last = self.innerProduct(self.last_check,self.last_check)
+            self.computeNormals(phi_mat)
+            self.adjustRadiouses(phi_mat)
             #print("Close Nodes-Nodes")
             #print(np.vstack([self.near_nn0,self.near_nn1]).T)
     
@@ -1233,3 +1266,4 @@ class Cloth:
         if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
            print("WARNING: average of more than 4 iterations taken, for better performance reduce dt or increase thck")
            self.warning = True
+
