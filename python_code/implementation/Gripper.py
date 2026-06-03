@@ -132,8 +132,9 @@ class SimulateGripper:
         # squeeze attributes
         self.local_points_rest = np.zeros((0, 3), dtype=float)
         self.local_points_goal = np.zeros((0, 3), dtype=float)
-        self.squeeze_alpha = 0.0 # changed to 0
-        self.squeeze_alpha_step = 0.05   # smaller = safer
+        self.squeeze_alpha = 1.0 # changed to 0
+        self.squeeze_alpha_step = 0.1   # smaller = safer
+        self.squeeze_amount = 0.50
 
     def set_pose(self, q=None, p=None):
         if q is None:
@@ -251,7 +252,7 @@ class SimulateGripper:
                 Xl_goal = Xl.copy()
 
                 dx = center_local[0] - Xl_goal[:, 0]
-                dx *= 0.50                    # move only 15% toward center in gripper x
+                dx *= self.squeeze_amount      # move only 50% toward center in gripper x
                 # dx = np.clip(dx, -0.002, 0.002)  # cap to 2 mm per node
                 Xl_goal[:, 0] += dx
 
@@ -285,24 +286,50 @@ class SimulateGripper:
         self.visible_history.append(True)
         self.grasp_history.append(grasp_now)
                 
+    # def step(self):
+    #     # step is called on every callback frame, hence the target positions for the grasped nodes
+    #     # are sent to the solver every frame, not once. Thus, gradual squeezing can be done
+    #     # to avoid sudden jumping: from local_points_rest to local_points_goal.
+    #     if (not self.is_open) and len(self.controlled) > 0:
+    #         if self.squeeze_alpha < 1.0:
+    #             self.squeeze_alpha = min(1.0, self.squeeze_alpha + self.squeeze_alpha_step)
+    #             # a = 0.15, next step, a = min(1.0, 0.15 + 0.10) = 0.25, next step, a = 0.35, ...
+    #             a = self.squeeze_alpha
+    #             # changing self.local_points every frame, even though self.controlled does not change.
+    #             self.local_points = (1.0 - a) * self.local_points_rest + a * self.local_points_goal
+
+    #         u = quat_transform_points(self.p, self.q, self.local_points)
+    #         self.cloth.simulate(u=u, control=self.controlled)
+    #     else:
+    #         self.cloth.simulate(u=np.zeros((0, 3)), control=[])
+
+    #     self.record_history()
+        
     def step(self):
-        # step is called on every callback frame, hence the target positions for the grasped nodes
-        # are sent to the solver every frame, not once. Thus, gradual squeezing can be done
-        # to avoid sudden jumping: from local_points_rest to local_points_goal.
+        # Called every Unity frame. Python receives the current gripper pose from Unity.
+        # If the gripper is closed and has grasped nodes, Python computes
+        # the desired controlled-node positions and advances the cloth simulation.
+        self.last_controlled = []
+        self.last_u = np.zeros((0, 3), dtype=float)
         if (not self.is_open) and len(self.controlled) > 0:
             if self.squeeze_alpha < 1.0:
                 self.squeeze_alpha = min(1.0, self.squeeze_alpha + self.squeeze_alpha_step)
-                # a = 0.15, next step, a = min(1.0, 0.15 + 0.15) = 0.30, next step, a = 0.45, ...
+                # a = 0.15, next step, a = min(1.0, 0.15 + 0.10) = 0.25, next step, a = 0.35, ...
                 a = self.squeeze_alpha
                 # changing self.local_points every frame, even though self.controlled does not change.
                 self.local_points = (1.0 - a) * self.local_points_rest + a * self.local_points_goal
 
             u = quat_transform_points(self.p, self.q, self.local_points)
+            self.last_controlled = list(self.controlled)
+            self.last_u = u.copy()
+            
             self.cloth.simulate(u=u, control=self.controlled)
         else:
             self.cloth.simulate(u=np.zeros((0, 3)), control=[])
 
         self.record_history()
+        
+        return self.last_controlled, self.last_u
 
 """
 The best long-term formulation is:

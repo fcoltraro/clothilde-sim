@@ -31,7 +31,7 @@ X += 0.0001 * np.random.randn(X.shape[0], 3)
 cloth = Cloth(X, T)
 dt = cloth.estimateTimeStep(L=0.8)
 # cloth.setSimulatorParameters(dt=dt, shr=0.1 * 0.0001, str=0.001 * 0.0001)
-cloth.setSimulatorParameters(dt=1/60,sub_steps=6)
+cloth.setSimulatorParameters(dt=1/60,sub_steps=6, slf=0.01)
 
 # mu_s=0.45, kappa=0.1 * 0.0001 
 cloth.plotMesh()
@@ -60,9 +60,7 @@ grip.set_pose(q0, gripper_pos)
 q0 = grip.q.copy()
 p0 = grip.p.copy()
 
-
 ### helper functions
-
 follow_offset = None
 follow_enabled = False
 
@@ -89,7 +87,7 @@ def follow_gripper_camera():
     ps.look_at(cam_pos, target)
 
 # Gripper parallelopiped
-debug_box_faces = np.array([
+box_faces = np.array([
     [0,1,2], [0,2,3],
     [4,5,6], [4,6,7],
     [0,1,5], [0,5,4],
@@ -125,7 +123,6 @@ def transform_mesh(V_local, q, p, local_offset=np.zeros(3)):
     return quat_transform_points(np.asarray(p, dtype=float), quat_normalize(q), V)
 
 ###
-
 # load 3 parts
 V_base0, F_base = load_mesh("gripper_cad_files/base.stl")
 V_left0, F_left = load_mesh("gripper_cad_files/jaw_left.stl")
@@ -171,7 +168,7 @@ V_dbg = get_box_vertices_world_offset(p=grip.p, q=grip.q, box_size=grasp_box, ce
 ps.register_surface_mesh(
     "grasp_box",
     V_dbg,
-    debug_box_faces,
+    box_faces,
     color=[1.0, 1.0, 0.0],
     transparency=0.55,
     material="wax"
@@ -183,7 +180,6 @@ ps.register_surface_mesh(
 
 #region update scene
 # only for visualization (redraw/update): also called every frame through callback
-
 def update_scene():
     # copied from Cloth.py: to update meshes
     phi_mat = cloth.positions
