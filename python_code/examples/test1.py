@@ -16,6 +16,7 @@ X[:,2] += 0.9;
 X += 0.0001*np.random.randn(X.shape[0],3) 
 
 self = Cloth(X, T); 
+self.addTable(center=[0,0,0.4],dimensions=[0.6,0.5,0.04],mu=0.3)
 dt = 1/60 
 self.plotMesh()
 self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.3, tol = 0.0075, shr = 5*1e-4, 

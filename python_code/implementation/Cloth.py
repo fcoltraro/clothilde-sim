@@ -58,6 +58,7 @@ class Cloth:
         self.nodes = np.arange(self.n_verts) #needed for proximity detection
         self.empty = np.array([],dtype=int) #handy sometimes
         self.ni = np.repeat(np.arange(self.n_verts),self.kn)
+        self.table = False
 
         #for plotting with polyscope
         self.ps_frame = 0 #for making a movie: go through the history
@@ -728,6 +729,9 @@ class Cloth:
         matrix_rads[d1,d3] = sum_rads1
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
+        #edges that share a node
+        #S = self.A0 @ self.A0.T
+        #ei, ej = S.nonzero()
 
  
     def setSimulatorParameters(self, dt = 1/60, tol = 0.0075, sub_steps = 10,
@@ -806,6 +810,103 @@ class Cloth:
     def computeNorm(self,w):
         return np.sqrt(self.innerProduct(w,w))
 
+    def addTable(self,center,dimensions,mu):
+        self.table = True
+        self.mu_table = mu
+        self.table_center = np.array(center)
+        self.table_half_size = np.array(dimensions)/2
+        self.box_min = self.table_center - self.table_half_size
+        self.box_max = self.table_center + self.table_half_size
+        cx, cy, cz = self.table_center
+        hx, hy, hz = 0.95*self.table_half_size
+
+        # Vertices: 8 corners of the rectangular table box
+        self.table_vertices = np.array([
+            [cx - hx, cy - hy, cz - hz],  # 0
+            [cx + hx, cy - hy, cz - hz],  # 1
+            [cx + hx, cy + hy, cz - hz],  # 2
+            [cx - hx, cy + hy, cz - hz],  # 3
+
+            [cx - hx, cy - hy, cz + hz],  # 4
+            [cx + hx, cy - hy, cz + hz],  # 5
+            [cx + hx, cy + hy, cz + hz],  # 6
+            [cx - hx, cy + hy, cz + hz],  # 7
+        ])
+
+        # Quadrilateral faces
+        self.table_faces = np.array([
+            [0, 3, 2, 1],  # bottom
+            [7, 6, 5, 4],  # top
+
+            [0, 1, 5, 4],  # front, y-
+            [3, 7, 6, 2],  # back, y+
+
+            [0, 4, 7, 3],  # left, x-
+            [1, 2, 6, 5],  # right, x+
+        ], dtype=int)
+        if self.polyscoped is False:
+            self.preparePolyscope()
+        ps.register_surface_mesh("Table", self.table_vertices, self.table_faces, smooth_shade=True, edge_width = 1)
+
+    
+    @profile
+    def tableCollisions(self,phi):    
+        phi_mat = phi.reshape((-1, 3), order="F")
+        p = phi_mat.copy()
+
+        # Is particle center inside the box?
+        inside = np.all((p >= self.box_min) & (p <= self.box_max), axis=1)
+
+        # --------------------------------------------------
+        # Case 1: particle center is outside the box
+        # --------------------------------------------------
+        closest = np.clip(p, self.box_min, self.box_max)
+
+        direction = p - closest
+        dist = self.computeNorm(direction) 
+
+        outside_hit = (~inside) & (dist < self.rad)
+
+        if np.any(outside_hit):
+            n = direction[outside_hit] / dist[outside_hit, None]
+            p[outside_hit] = closest[outside_hit] + n * self.rad
+
+        # --------------------------------------------------
+        # Case 2: particle center is inside the box
+        # Push it to the nearest face, plus radius.
+        # --------------------------------------------------
+        if np.any(inside):
+            p_inside = p[inside]
+
+            dist_to_min = p_inside - self.box_min
+            dist_to_max = self.box_max - p_inside
+
+            distances = np.concatenate([dist_to_min, dist_to_max], axis=1)
+            closest_face = np.argmin(distances, axis=1)
+
+            corrected = p_inside.copy()
+
+            for i, face in enumerate(closest_face):
+                if face < 3:
+                    axis = face
+                    corrected[i, axis] = self.box_min[axis] - self.rad
+                else:
+                    axis = face - 3
+                    corrected[i, axis] = self.box_max[axis] + self.rad
+
+            p[inside] = corrected
+        #friction
+        dlt_phi = p - phi_mat
+        nu_mat = dlt_phi.reshape((self.n_verts, 3), order='F')
+        norm_Fn = self.computeNorm(nu_mat)
+        nu = nu_mat/(norm_Fn[:,np.newaxis] + 1e-12)
+        v = self.positions - p
+        vt = v - (self.innerProduct(v,nu)[:,np.newaxis])*nu 
+        #compute friction force vector
+        F_mu = self.frictionForce(self.mu_table,norm_Fn,vt,cap = True)
+        phi += (dlt_phi + F_mu).flatten(order="F") 
+        return phi
+
     @profile
     def floorCollisions(self,phi):
         phi_mat = phi.reshape((self.n_verts, 3), order='F').copy()
@@ -814,7 +915,8 @@ class Cloth:
         if ind_col.shape[0] > 0:
             self.flr = True
             #normal forces
-            norm_Fn = self.nodes_faces_count[ind_col]*np.abs(phi_mat[ind_col,2]) #normal force 
+            #norm_Fn = self.nodes_faces_count[ind_col]*np.abs(phi_mat[ind_col,2]) #normal force scaled
+            norm_Fn = np.abs(phi_mat[ind_col,2]) #normal force 
             phi_mat[ind_col,2] = 0 #orthogonal projection to the floor          
             #friction
             vt = (self.positions[ind_col] - phi_mat[ind_col]) #tangent friction direction per node 
@@ -1187,6 +1289,10 @@ class Cloth:
 
                 #iteration count 
                 n_iter += 1
+
+            if self.table is True:
+                phi = self.tableCollisions(phi)
+
 
             #floor collisions
             phi = self.floorCollisions(phi)
