@@ -51,14 +51,14 @@ class Cloth:
         self.seams_IJK = [self.Is,self.Js,self.Ks]
 
         #for self-collisions
-        self.rad = 0.0035 #radious of the balls
+        self.rad = None #radious of the balls
         self.last_check = np.array(verts, order = 'F') #for checking close self-collision pairs
         self.den_last = 1
-        self.ke = 12 #get k nearest nodes to every node
+        self.kn = 12 #get k nearest nodes to every node
         self.nodes = np.arange(self.n_verts) #needed for proximity detection
         self.empty = np.array([],dtype=int) #handy sometimes
+        self.ni = np.repeat(np.arange(self.n_verts),self.kn)
         self.table = False
-        self.vals_ee = [0]
 
         #for plotting with polyscope
         self.ps_frame = 0 #for making a movie: go through the history
@@ -150,9 +150,8 @@ class Cloth:
         # compute all auxiliar objects for fast simulation
         self.checkQuadMesh()
         self.computeEdges()
+        self.buildShareEdgeMatrix()
         self.buildAdjacencyMatrices()
-        self.buildShareNodeMatrix()
-        #self.buildShareEdgeMatrix()
         self.computeBoundary()
         self.triangulateQuadMesh()
         self.prepareMatrices()
@@ -180,11 +179,8 @@ class Cloth:
                     edges = set(map(frozenset, e1)); edges.update(set(map(frozenset, e2))); 
                     edges.update(set(map(frozenset, e3))); edges.update(set(map(frozenset, e4)))
             self.edges = list(edges) #list of unoriented edges in set form
-            self.edges_matrix = np.array(list(map(list,self.edges))) #in matrix form, handy for many computations
-            self.e0 = self.edges_matrix[:,0]; self.e1 = self.edges_matrix[:,1]
+            self.edges_matrix = np.array(list(map(list,self.edges))) #in matrix form, handy for some computations
             self.n_edges = len(self.edges)
-            self.ei = np.repeat(np.arange(self.n_edges),self.ke)
-
 
     def buildAdjacencyMatrices(self):
         assert self.n_edges > 0, "Please compute first all edges"
@@ -626,7 +622,7 @@ class Cloth:
         ps.init()
         ps.remove_all_structures()
         ps.register_surface_mesh(self.label, self.Am@self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
-        ps.register_curve_network(self.label,self.positions,self.edges_matrix,enabled=True)
+        ps.register_point_cloud(self.label, self.positions, enabled = False)
         ps.set_up_dir("z_up")
         ps.set_ground_plane_mode("tile_reflection")  # set +Z as up direction
         ps.set_ground_plane_height(-0.005) # adjust the plane height
@@ -637,9 +633,9 @@ class Cloth:
             self.preparePolyscope()
         """Plot the current mesh"""
         ps.get_surface_mesh(self.label).update_vertex_positions(self.Am@self.positions)
-        ps.get_curve_network(self.label).update_node_positions(self.positions)
+        ps.get_point_cloud(self.label).update_point_positions(self.positions)
         if self.rad is not None:
-           ps.get_curve_network(self.label).set_radius(rad=self.rad,relative=False)
+           ps.get_point_cloud(self.label).set_radius(rad=self.rad,relative=False)
         ps.show()
 
     def makeMovie(self, speed = 1, repeat = True, smooth = 0):
@@ -647,7 +643,7 @@ class Cloth:
             self.preparePolyscope()
         self.ps_frame = 0
         skip = speed
-        ps.get_curve_network(self.label).set_radius(rad=self.rad,relative=False)
+        ps.get_point_cloud(self.label).set_radius(rad=self.rad,relative=False)
 
         def goThroughHistory():
             # Update Polyscope visualization
@@ -656,7 +652,7 @@ class Cloth:
             for _ in range(smooth):
                 phi_all = self.S@phi_all
             ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
-            ps.get_curve_network(self.label).update_node_positions(phi_mat)
+            ps.get_point_cloud(self.label).update_point_positions(phi_mat)
 
             # Advance simulation time by skipping frames accordingly
             self.ps_frame += skip
@@ -670,7 +666,7 @@ class Cloth:
                    for _ in range(smooth):
                        phi_all = self.S@phi_all
                    ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
-                   ps.get_curve_network(self.label).update_node_positions(phi_mat)
+                   ps.get_point_cloud(self.label).update_point_positions(phi_mat)
                    ps.clear_user_callback()
 
         ps.set_user_callback(goThroughHistory)
@@ -718,9 +714,8 @@ class Cloth:
         diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
         #constant radious of the balls
-        #self.rad = self.thck*np.mean(longs)/2.05
+        self.rad = self.thck*np.mean(longs)/2.05
         self.max_step = self.max_mov*np.mean(longs)
-        self.eps_sus = 1.1*np.mean(longs)
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -771,7 +766,7 @@ class Cloth:
         self.mov_tol = 0.025 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
         self.max_mov = max_mov #between 0 and 1 fraction of mean edge length that the control nodes can move in one time step
         self.computeRadiouses()
-        #self.eps_sus = 3.5*self.rad #threshold for detecting close balls in computeClosePairs()
+        self.eps_sus = 3.3*self.rad #threshold for detecting close balls in computeClosePairs()
 
 
         #factorize implicit step matrix E for fast unconstrained step
@@ -953,67 +948,26 @@ class Cloth:
         #compute friction force vector
         F_mu = self.frictionForce(self.mu_self,norm_Fn,vt,cap = True)
         return F_mu.flatten(order='F')
+
     
     @profile
-    def selfCollisions(self,phi,n_iter,max_iters=50):    
-        if n_iter == 0:
-            #precompute objects for selfcollisions
-            self.prepareCollisions(phi)        
-        #check for possible selfcollisions
-        self.updateCollisionsEdges(phi)
-
-        if False: #self.error_slf < -self.tol: #correct detected self-collisions
-            #add new and previous selfcollisions
-            ind_s = np.nonzero((self.vals_slf/self.rads) < self.tol)[0]
-            self.ind_slf = self.unionMask(self.ind_slf,ind_s)
-            #correction for positions
-            dlt_phi = self.solveLCP(max_iters)
-            
-            #lets project into stretch space
-            b = -self.stretch.grad@dlt_phi
-            dlt_lambda = self.stretch.factor(b)
-            prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
-            dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
-            
-            #apply friction if needed
-            if self.mu_self > 0 and n_iter < 5:
-                F_mu = self.computeFrictionCorrection(phi + dlt_phi,dlt_phi)
-            else:
-                F_mu = 0*phi
-
-            #update phi
-            phi += dlt_phi + F_mu
-            
-        return phi
-    
-    @profile
-    def updateCollisionsEdges(self,phi): 
+    def updateSelfCollisions(self,phi): 
         phi_mat = phi.reshape((self.n_verts, 3), order='F') 
-        #assume we already have the baryentric coordinates
-        p0 = phi_mat[self.e0[self.near_ee0]]
-        p1 = phi_mat[self.e1[self.near_ee0]]
-        q0 = phi_mat[self.e0[self.near_ee1]]
-        q1 = phi_mat[self.e1[self.near_ee1]]
-        #closest points
-        p = (1-self.ss)*p0 + self.ss*p1
-        q = (1-self.tt)*q0 + self.tt*q1
-
-        #simplified CCD for the edges
-        pq = q - p
+        #simplified CCD for the balls
+        xy = phi_mat[self.near_nn1] - phi_mat[self.near_nn0]
         #normal
-        norm_pq = self.computeNorm(pq)
-        normal_all = pq / norm_pq[:,np.newaxis]
+        norm_xy = self.computeNorm(xy)
+        normal_all = xy / norm_xy[:,np.newaxis]
         #orient normal
-        res0 = self.innerProduct(self.pq0,normal_all); flip = (res0 < 0); 
-        normal_all[flip] = -normal_all[flip]; norm_pq[flip] = -norm_pq[flip]             
+        res0 = self.innerProduct(self.xy0,normal_all); flip = (res0 < 0); 
+        normal_all[flip] = -normal_all[flip]; norm_xy[flip] = -norm_xy[flip]             
         #evaluate the constraints
-        self.vals_ee = norm_pq - 2*self.rad
-        self.normals_ee = normal_all 
-        if self.vals_ee.shape[0] > 0:
-           self.error_ee = np.min(self.vals_ee/(2*self.rad))
+        self.vals_slf = norm_xy - self.rads
+        self.normals_slf = normal_all 
+        if self.vals_slf.shape[0] > 0:
+           self.error_slf = np.min(self.vals_slf/self.rads)
         else:
-           self.error_ee = 1
-
+           self.error_slf = 1
 
     @profile
     def solveLCP(self, max_iter = 50):
@@ -1063,18 +1017,39 @@ class Cloth:
             ii += 1
         #print(ii)
         return dlt_phi.flatten(order='F')
-    
-    def buildShareNodeMatrix(self):
-        n = self.n_edges
-        share_node = np.zeros((n, n), dtype=bool)
-        S = self.A0 @ self.A0.T
-        ei, ej = S.nonzero()
-        share_node[ei,ej] = True
-        S2 = self.A1.T @ self.A1
-        ei, ej = S2.nonzero()
-        share_node[ei,ej] = True
-        self.share_node = share_node
 
+
+    @profile
+    def selfCollisions(self,phi,n_iter,max_iters=50):    
+        if n_iter == 0:
+            #precompute objects for selfcollisions
+            self.prepareCollisions(phi)        
+        #check for possible selfcollisions
+        self.updateSelfCollisions(phi)
+
+        if self.error_slf < -self.tol: #correct detected self-collisions
+            #add new and previous selfcollisions
+            ind_s = np.nonzero((self.vals_slf/self.rads) < self.tol)[0]
+            self.ind_slf = self.unionMask(self.ind_slf,ind_s)
+            #correction for positions
+            dlt_phi = self.solveLCP(max_iters)
+            
+            #lets project into stretch space
+            b = -self.stretch.grad@dlt_phi
+            dlt_lambda = self.stretch.factor(b)
+            prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
+            dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
+            
+            #apply friction if needed
+            if self.mu_self > 0 and n_iter < 5:
+                F_mu = self.computeFrictionCorrection(phi + dlt_phi,dlt_phi)
+            else:
+                F_mu = 0*phi
+
+            #update phi
+            phi += dlt_phi + F_mu
+            
+        return phi
     
     def buildShareEdgeMatrix(self):
         n = self.n_verts
@@ -1129,26 +1104,30 @@ class Cloth:
     
     @profile
     def computeClosePairs(self,phi_mat):
-        #build the tree only for the edges
-        phi_e = 0.5*(phi_mat[self.e0]+phi_mat[self.e1])
-        tree_e = KDTree(phi_e)
+        #build the tree only for the nodes
+        tree_n = KDTree(phi_mat)
 
         #node-node close pairs
-        dists, neighs = tree_e.query(phi_e, k=self.ke+1) #query it for k nodes neighbors
+        dists, neighs = tree_n.query(phi_mat, k=self.kn+1) #query it for k nodes neighbors
         #reshape removing the first pair
         dist = dists[:,1:].reshape(-1)
-        ej = neighs[:,1:].reshape(-1)
+        nj = neighs[:,1:].reshape(-1)
         #remove far away pairs and duplicates
-        mask = (dist < self.eps_sus) & (self.ei < ej)
-        ei = self.ei[mask]; ej = ej[mask]
+        mask = (dist < self.eps_sus) & (self.ni < nj)
+        ni = self.ni[mask]; nj = nj[mask]
         #second mask
-        mask2 = ~self.share_node[ei,ej]
-        ei = ei[mask2]; ej = ej[mask2]
+        mask2 = ~self.share_edge[ni,nj]
+        ni = ni[mask2]; nj = nj[mask2]
+        #third mask
+        mask3 = ~self.share_control[ni,nj]
+        ni = ni[mask3]; nj = nj[mask3]
+        #set radiouses to avoid jitering when the balls are too big
+        self.rads = self.matrix_rads[ni,nj]
         #potential colliding nodes-nodes
-        self.near_ee0 = ei; self.near_ee1 = ej
+        self.near_nn0 = ni; self.near_nn1 = nj
 
         #mask for indices
-        self.mask_ee = np.zeros(self.near_ee0.shape[0], dtype=bool)
+        self.mask_col = np.zeros(self.near_nn0.shape[0], dtype=bool)
 
     @profile
     def updateClosePairs(self,phi_mat):
@@ -1159,66 +1138,15 @@ class Cloth:
             self.computeClosePairs(phi_mat) #update close pairs
             self.last_check = phi_mat #update last checked mesh
             self.den_last = self.innerProduct(self.last_check,self.last_check)
-            #print("Close edge-edge")
-            #print(np.vstack([self.near_ee0,self.near_ee1]).T)
-            self.computeBarycentricEdges(phi_mat)
-            #print("Barycentric")
-            #print(np.vstack([self.ss.T,self.tt.T]).T)
-
-    @profile
-    def computeBarycentricEdges(self,phi_mat):
-        p0 = phi_mat[self.e0[self.near_ee0]]
-        p1 = phi_mat[self.e1[self.near_ee0]]
-        q0 = phi_mat[self.e0[self.near_ee1]]
-        q1 = phi_mat[self.e1[self.near_ee1]]
-        # Edge directions
-        dp = p1 - p0
-        dq = q1 - q0
-        # Solve approximately:
-        # p0 + s dp = q0 + t dq
-        #
-        # equivalently:
-        # q0 - p0 = s dp - t dq
-        ss, tt = self.projectVectorInPlane(q0 - p0, dp, -dq)
-
-        # Clamp to segments
-        self.ss = self.clampVector(ss)[:,np.newaxis]
-        self.tt = self.clampVector(tt)[:,np.newaxis]
-
-    
-    def projectVectorInPlane(self,q,q1,q2):
-        b1 = self.innerProduct(q,q1)
-        b2 = self.innerProduct(q,q2)
-        a11 = self.innerProduct(q1,q1)
-        a12 = self.innerProduct(q1,q2)
-        a22 = self.innerProduct(q2,q2)
-        return self.solve2x2system(b1,b2,a11,a12,a12,a22) 
-    
-    def solve2x2system(self,b1,b2,a11,a12,a21,a22):
-        #vectorized solution of many 2x2 systems using Cramer's rule
-        deter = a11*a22 - a12*a21
-        sing = (deter < 1e-8)
-        x = (b1*a22 - a12*b2)/(deter + 1e-8); x[sing] = 0.5
-        y = (b2*a11 - a21*b1)/(deter + 1e-8); y[sing] = 0.5
-        return x, y
-    
-    def clampVector(self,u):
-        return np.maximum(0.0, np.minimum(1.0, u))
-
+            #print("Close Nodes-Nodes")
+            #print(np.vstack([self.near_nn0,self.near_nn1]).T)
     
     @profile
     def prepareCollisions(self,phi):
         phi_mat = phi.reshape((self.n_verts, 3), order='F') 
         self.updateClosePairs(phi_mat)
         #do costly indexing operations only once
-        p0 = self.positions[self.e0[self.near_ee0]]
-        p1 = self.positions[self.e1[self.near_ee0]]
-        q0 = self.positions[self.e0[self.near_ee1]]
-        q1 = self.positions[self.e1[self.near_ee1]]
-        #closest points
-        p = (1-self.ss)*p0 + self.ss*p1
-        q = (1-self.tt)*q0 + self.tt*q1
-        self.pq0 = q - p
+        self.xy0 = self.positions[self.near_nn1] - self.positions[self.near_nn0]
         #store past collisions
         self.ind_slf = self.empty
         #store if floor collisions have happened
@@ -1364,15 +1292,6 @@ class Cloth:
 
             if self.table is True:
                 phi = self.tableCollisions(phi)
-
-            inds_ee = np.nonzero(self.vals_ee < 0)[0]
-            if inds_ee.shape[0] > 0:
-                print("Close edge-edge")
-                print(np.vstack([self.near_ee0[inds_ee],self.near_ee1[inds_ee]]).T)
-                print("Barycentric")
-                print(np.hstack([self.ss[inds_ee],self.tt[inds_ee]]))
-                print("error")
-                print(self.vals_ee[inds_ee])
 
 
             #floor collisions
