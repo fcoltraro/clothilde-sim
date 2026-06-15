@@ -51,7 +51,7 @@ class Cloth:
         self.seams_IJK = [self.Is,self.Js,self.Ks]
 
         #for self-collisions
-        self.rad = 0.0035 #radious of the balls
+        self.rad = 0.003 #radious of the balls
         self.last_check = np.array(verts, order = 'F') #for checking close self-collision pairs
         self.den_last = 1
         self.ke = 12 #get k nearest nodes to every node
@@ -720,7 +720,7 @@ class Cloth:
         #constant radious of the balls
         #self.rad = self.thck*np.mean(longs)/2.05
         self.max_step = self.max_mov*np.mean(longs)
-        self.eps_sus = 1.1*np.mean(longs)
+        self.eps_sus = 1.1*np.max(longs)
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -1166,29 +1166,90 @@ class Cloth:
             #print(np.vstack([self.ss.T,self.tt.T]).T)
 
     @profile
-    def computeBarycentricEdges(self,phi_mat):
+    def computeBarycentricEdges(self, phi_mat):
+        #fancy indexing (precompute interior)
         p0 = phi_mat[self.e0[self.near_ee0]]
         p1 = phi_mat[self.e1[self.near_ee0]]
         q0 = phi_mat[self.e0[self.near_ee1]]
         q1 = phi_mat[self.e1[self.near_ee1]]
-        # Edge directions
-        dp = p1 - p0
-        dq = q1 - q0
-        # Solve approximately:
-        # p0 + s dp = q0 + t dq
-        # equivalently:
-        # q0 - p0 = s dp - t dq
-        ss, tt = self.projectVectorInPlane(q0 - p0, dp, -dq)
+        #direction vectors
+        dp = p1 - p0; dq = q1 - q0
 
-        # Clamp to segments
-        self.ss = self.clampVector(ss)[:,np.newaxis]
-        self.tt = self.clampVector(tt)[:,np.newaxis]
+        # ------------------------------------------------------------
+        # Interior line-line candidate:
+        #
+        #     q0 - p0 = u dp - v dq
+        # ------------------------------------------------------------
 
-        #closest points
-        p = p0 + self.ss*dp
-        q = q0 + self.tt*dq
+        u_int, v_int, nonsing, dp2, dq2 = self.projectVectorInPlane(q0 - p0, dp, -dq)
+
+        valid_int = (
+            nonsing
+            & (u_int >= 0.0) & (u_int <= 1.0)
+            & (v_int >= 0.0) & (v_int <= 1.0)
+        )
+
+        u = u_int.copy()
+        v = v_int.copy()
+
+        # ------------------------------------------------------------
+        # Only non-interior / singular cases need boundary tests.
+        # ------------------------------------------------------------
+
+        bad = ~valid_int
+
+        if np.any(bad):
+            #only do all these computations for non-interior ones
+            p0b = p0[bad]; p1b = p1[bad]
+            q0b = q0[bad]; q1b = q1[bad]
+
+            dpb = dp[bad]; dqb = dq[bad]
+            dp2b = dp2[bad]; dq2b = dq2[bad]
+
+            nb = p0b.shape[0]
+
+            # p0 against q0-q1
+            v_p0, d2_p0 = self.closestPointNodeEdge(
+                p0b, q0b, dqb, dq2b
+            )
+            u_p0 = np.zeros(nb)
+
+            # p1 against q0-q1
+            v_p1, d2_p1 = self.closestPointNodeEdge(
+                p1b, q0b, dqb, dq2b
+            )
+            u_p1 = np.ones(nb)
+
+            # q0 against p0-p1
+            u_q0, d2_q0 = self.closestPointNodeEdge(
+                q0b, p0b, dpb, dp2b
+            )
+            v_q0 = np.zeros(nb)
+
+            # q1 against p0-p1
+            u_q1, d2_q1 = self.closestPointNodeEdge(
+                q1b, p0b, dpb, dp2b
+            )
+            v_q1 = np.ones(nb)
+
+            u_all = np.stack([u_p0, u_p1, u_q0, u_q1], axis=1)
+            v_all = np.stack([v_p0, v_p1, v_q0, v_q1], axis=1)
+
+            d2_all = np.stack([d2_p0, d2_p1, d2_q0, d2_q1], axis=1)
+
+            ind = np.argmin(d2_all, axis=1)
+            rows = np.arange(nb)
+
+            u[bad] = u_all[rows, ind]
+            v[bad] = v_all[rows, ind]
+
+        self.ss = u[:,np.newaxis]
+        self.tt = v[:,np.newaxis]
+        #TODO: only do this for interior ones and reuse computed distances
+        p = p0 + self.ss * dp
+        q = q0 + self.tt * dq
         norm_pq = self.computeNorm(q-p)
-        inds_cls = (norm_pq < 6*self.rad)
+        inds_cls = (norm_pq < 4*self.rad)
 
         #update arrays
         self.near_ee0 = self.near_ee0[inds_cls]
@@ -1196,9 +1257,7 @@ class Cloth:
         self.ss = self.ss[inds_cls]
         self.tt = self.tt[inds_cls]
 
-
-
-        
+        ps.register_point_cloud('close',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
 
     
     def projectVectorInPlane(self,q,q1,q2):
@@ -1207,18 +1266,70 @@ class Cloth:
         a11 = self.innerProduct(q1,q1)
         a12 = self.innerProduct(q1,q2)
         a22 = self.innerProduct(q2,q2)
-        return self.solve2x2system(b1,b2,a11,a12,a12,a22) 
+        return self.solve2x2system(b1,b2,a11,a12,a12,a22)
     
-    def solve2x2system(self,b1,b2,a11,a12,a21,a22):
-        #vectorized solution of many 2x2 systems using Cramer's rule
-        deter = a11*a22 - a12*a21
-        sing = (np.abs(deter) < 1e-8)
-        x = (b1*a22 - a12*b2)/(deter + 1e-8); x[sing] = 0.5
-        y = (b2*a11 - a21*b1)/(deter + 1e-8); y[sing] = 0.5
-        return x, y
+    def solve2x2system(self, b1, b2, a11, a12, a21, a22, eps=1e-10):
+        """
+        Vectorized 2x2 solve.
+
+        Singular / near-singular systems return x = y = 0, but should be ignored
+        through the nonsing mask.
+        """
+        deter = a11 * a22 - a12 * a21
+
+        # Relative singularity test. For the Gram matrix this is more meaningful
+        # than comparing deter to an absolute number.
+        scale = np.abs(a11 * a22) + eps
+        nonsing = np.abs(deter) > eps * scale
+
+        x = np.zeros_like(b1)
+        y = np.zeros_like(b2)
+
+        x[nonsing] = (
+            b1[nonsing] * a22[nonsing]
+            - a12[nonsing] * b2[nonsing]
+        ) / deter[nonsing]
+
+        y[nonsing] = (
+            b2[nonsing] * a11[nonsing]
+            - a21[nonsing] * b1[nonsing]
+        ) / deter[nonsing]
+
+        return x, y, nonsing, a11, a22
     
     def clampVector(self,u):
         return np.maximum(0.0, np.minimum(1.0, u))
+    
+    def closestPointNodeEdge(self, x, e0, de, de2, eps=1e-12):
+        """
+        Closest point from nodes x to segments e0 + u de.
+
+        Parameters
+        ----------
+        x : (n, 3)
+            Query points.
+        e0 : (n, 3)
+            Segment start points.
+        de : (n, 3)
+            Precomputed edge directions.
+        de2 : (n,)
+            Precomputed squared edge lengths.
+
+        Returns
+        -------
+        u : (n,)
+            Clamped coordinate on the edge.
+        d2 : (n,)
+            Squared distance.
+        """
+        u = self.innerProduct(x - e0, de) / (de2 + eps)
+        u = self.clampVector(u)
+
+        p = e0 + u[:, np.newaxis] * de
+        d = x - p
+        d2 = self.innerProduct(d, d)
+
+        return u, d2
 
     
     @profile
@@ -1388,6 +1499,7 @@ class Cloth:
                 print(np.hstack([self.ss[inds_ee],self.tt[inds_ee]]))
                 print("error")
                 print(self.vals_ee[inds_ee])
+                
 
 
             #floor collisions

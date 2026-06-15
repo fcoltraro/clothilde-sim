@@ -21,13 +21,13 @@ dt = 1/600
 self.setSimulatorParameters(dt=dt,tol=0.0085, 
                             rho=0.1,delta=0.1,kappa=0.25*1e-4,shr=0.5*1e-4, kappa_bnd = 0.025*1e-4,
                             str=0.001*1e-4,alpha=0.2,mu_f=0.3,mu_s=0.3,thck=0.9,sub_steps=1)
-tf = int(0.65/dt)
+tf = int(0.5/dt)
 print(tf)
 self.plotMesh()
 inds = [m-1, nb*na - m-1]
 u = self.positions[inds]
 start_time = time.time()
-for i in range(274):
+for i in range(275):
     print("Iteration: ",i)
     if i == -int(tf/2):
         inds = [0]
