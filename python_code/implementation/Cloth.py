@@ -1070,9 +1070,9 @@ class Cloth:
         S = self.A0 @ self.A0.T
         ei, ej = S.nonzero()
         share_node[ei,ej] = True
-        S2 = self.A1.T @ self.A1
-        ei, ej = S2.nonzero()
-        share_node[ei,ej] = True
+        #S2 = self.A1.T @ self.A1
+        #ei, ej = S2.nonzero()
+        #share_node[ei,ej] = True
         self.share_node = share_node
 
     
@@ -1176,7 +1176,6 @@ class Cloth:
         dq = q1 - q0
         # Solve approximately:
         # p0 + s dp = q0 + t dq
-        #
         # equivalently:
         # q0 - p0 = s dp - t dq
         ss, tt = self.projectVectorInPlane(q0 - p0, dp, -dq)
@@ -1184,6 +1183,22 @@ class Cloth:
         # Clamp to segments
         self.ss = self.clampVector(ss)[:,np.newaxis]
         self.tt = self.clampVector(tt)[:,np.newaxis]
+
+        #closest points
+        p = p0 + self.ss*dp
+        q = q0 + self.tt*dq
+        norm_pq = self.computeNorm(q-p)
+        inds_cls = (norm_pq < 6*self.rad)
+
+        #update arrays
+        self.near_ee0 = self.near_ee0[inds_cls]
+        self.near_ee1 = self.near_ee1[inds_cls]
+        self.ss = self.ss[inds_cls]
+        self.tt = self.tt[inds_cls]
+
+
+
+        
 
     
     def projectVectorInPlane(self,q,q1,q2):
@@ -1197,7 +1212,7 @@ class Cloth:
     def solve2x2system(self,b1,b2,a11,a12,a21,a22):
         #vectorized solution of many 2x2 systems using Cramer's rule
         deter = a11*a22 - a12*a21
-        sing = (deter < 1e-8)
+        sing = (np.abs(deter) < 1e-8)
         x = (b1*a22 - a12*b2)/(deter + 1e-8); x[sing] = 0.5
         y = (b2*a11 - a21*b1)/(deter + 1e-8); y[sing] = 0.5
         return x, y
@@ -1365,7 +1380,7 @@ class Cloth:
             if self.table is True:
                 phi = self.tableCollisions(phi)
 
-            inds_ee = np.nonzero(self.vals_ee < 0)[0]
+            inds_ee = np.nonzero(self.vals_ee < np.inf)[0]
             if inds_ee.shape[0] > 0:
                 print("Close edge-edge")
                 print(np.vstack([self.near_ee0[inds_ee],self.near_ee1[inds_ee]]).T)

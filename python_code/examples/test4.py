@@ -27,7 +27,7 @@ self.plotMesh()
 inds = [m-1, nb*na - m-1]
 u = self.positions[inds]
 start_time = time.time()
-for i in range(275):
+for i in range(274):
     print("Iteration: ",i)
     if i == -int(tf/2):
         inds = [0]
