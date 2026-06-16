@@ -55,6 +55,7 @@ class Cloth:
         self.last_check = np.array(verts, order = 'F') #for checking close self-collision pairs
         self.den_last = 1
         self.ke = 12 #get k nearest nodes to every node
+        self.kf = 12 #get k nearest nodes to every node
         self.nodes = np.arange(self.n_verts) #needed for proximity detection
         self.empty = np.array([],dtype=int) #handy sometimes
         self.table = False
@@ -184,6 +185,7 @@ class Cloth:
             self.e0 = self.edges_matrix[:,0]; self.e1 = self.edges_matrix[:,1]
             self.n_edges = len(self.edges)
             self.ei = np.repeat(np.arange(self.n_edges),self.ke)
+            self.fi = np.repeat(np.arange(self.n_faces),self.kf)
 
 
     def buildAdjacencyMatrices(self):
@@ -625,7 +627,8 @@ class Cloth:
         self.polyscoped = True
         ps.init()
         ps.remove_all_structures()
-        ps.register_surface_mesh(self.label, self.Am@self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
+        #ps.register_surface_mesh(self.label, self.Am@self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
+        ps.register_surface_mesh(self.label, self.positions, self.faces, smooth_shade=True, transparency=0.9, edge_width = 0)
         ps.register_curve_network(self.label,self.positions,self.edges_matrix,enabled=True)
         ps.set_up_dir("z_up")
         ps.set_ground_plane_mode("tile_reflection")  # set +Z as up direction
@@ -636,7 +639,8 @@ class Cloth:
         if self.polyscoped is False:
             self.preparePolyscope()
         """Plot the current mesh"""
-        ps.get_surface_mesh(self.label).update_vertex_positions(self.Am@self.positions)
+        #ps.get_surface_mesh(self.label).update_vertex_positions(self.Am@self.positions)
+        ps.get_surface_mesh(self.label).update_vertex_positions(self.positions)
         ps.get_curve_network(self.label).update_node_positions(self.positions)
         if self.rad is not None:
            ps.get_curve_network(self.label).set_radius(rad=self.rad,relative=False)
@@ -655,7 +659,7 @@ class Cloth:
             phi_all = self.Am@phi_mat
             for _ in range(smooth):
                 phi_all = self.S@phi_all
-            ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
+            ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
             ps.get_curve_network(self.label).update_node_positions(phi_mat)
 
             # Advance simulation time by skipping frames accordingly
@@ -669,7 +673,7 @@ class Cloth:
                    phi_all = self.Am@phi_mat
                    for _ in range(smooth):
                        phi_all = self.S@phi_all
-                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
+                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
                    ps.get_curve_network(self.label).update_node_positions(phi_mat)
                    ps.clear_user_callback()
 
@@ -715,12 +719,13 @@ class Cloth:
         assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
         #take into account diagonals
         d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
-        diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
-        diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
+        diag0 = self.computeNorm(self.positions[d0]-self.positions[d2]); max0 = np.max(diag0)/2
+        diag1 = self.computeNorm(self.positions[d1]-self.positions[d3]); max1 = np.max(diag1)/2
         #constant radious of the balls
         #self.rad = self.thck*np.mean(longs)/2.05
         self.max_step = self.max_mov*np.mean(longs)
-        self.eps_sus = 1.1*np.max(longs)
+        self.eps_ee = 1.05*np.max(longs)
+        self.eps_nf = 1.05*np.max([max0,max1])
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -1075,6 +1080,9 @@ class Cloth:
         #share_node[ei,ej] = True
         self.share_node = share_node
 
+        node_in_face = self.A2.toarray().astype(bool)
+        self.node_in_face = node_in_face
+
     
     def buildShareEdgeMatrix(self):
         n = self.n_verts
@@ -1139,7 +1147,7 @@ class Cloth:
         dist = dists[:,1:].reshape(-1)
         ej = neighs[:,1:].reshape(-1)
         #remove far away pairs and duplicates
-        mask = (dist < self.eps_sus) & (self.ei < ej)
+        mask = (dist < self.eps_ee) & (self.ei < ej)
         ei = self.ei[mask]; ej = ej[mask]
         #second mask
         mask2 = ~self.share_node[ei,ej]
@@ -1150,6 +1158,28 @@ class Cloth:
         #mask for indices
         self.mask_ee = np.zeros(self.near_ee0.shape[0], dtype=bool)
 
+        #build the tree only for the faces
+        tree_n = KDTree(phi_mat)
+
+        #node-face close pairs
+        phi_f = 0.25*(phi_mat[self.f0] + phi_mat[self.f1] + phi_mat[self.f2] + phi_mat[self.f3])
+        self.mid_faces = phi_f
+        dists, neighs = tree_n.query(phi_f, k=self.kf) #query it for k nodes neighbors
+        #reshape 
+        dist = dists.reshape(-1)
+        nj = neighs.reshape(-1)
+        #remove far away pairs and duplicates
+        mask = (dist < self.eps_nf) 
+        fi = self.fi[mask]; nj = nj[mask]
+        #second mask
+        mask2 = ~self.node_in_face[fi,nj]
+        fi = fi[mask2]; nj = nj[mask2]
+        #potential colliding nodes-faces
+        self.near_nf0 = nj; self.near_nf1 = fi
+
+        #mask for indices
+        self.mask_nf = np.zeros(self.near_nf0.shape[0], dtype=bool)
+
     @profile
     def updateClosePairs(self,phi_mat):
         #check close pairs
@@ -1159,11 +1189,44 @@ class Cloth:
             self.computeClosePairs(phi_mat) #update close pairs
             self.last_check = phi_mat #update last checked mesh
             self.den_last = self.innerProduct(self.last_check,self.last_check)
-            #print("Close edge-edge")
-            #print(np.vstack([self.near_ee0,self.near_ee1]).T)
+            print("Close node-face")
+            print(np.vstack([self.near_nf0,self.near_nf1]).T)
             self.computeBarycentricEdges(phi_mat)
-            #print("Barycentric")
-            #print(np.vstack([self.ss.T,self.tt.T]).T)
+            self.computeBarycentricFaces(phi_mat)
+
+    @profile
+    def computeBarycentricFaces(self, phi_mat):
+        #fancy indexing (precompute interior)
+        p = phi_mat[self.near_nf0]
+        q0 = phi_mat[self.f0[self.near_nf1]]
+        q1 = phi_mat[self.f1[self.near_nf1]]
+        q2 = phi_mat[self.f2[self.near_nf1]]
+        q3 = phi_mat[self.f3[self.near_nf1]]
+        qm = self.mid_faces[self.near_nf1]
+
+        #direction vectors
+        tu = 0.5*(q1-q0 + q2-q3)
+        tv = 0.5*(q2-q1 + q3-q0)
+
+        # ------------------------------------------------------------
+        # Interior line-line candidate:
+        #
+        #     q0 - p0 = u dp - v dq
+        # ------------------------------------------------------------
+
+        alpha, beta, nonsing, _, _ = self.projectVectorInPlane(p - qm, tu, tv)
+        u = 0.5+alpha; v = 0.5+beta
+
+        valid_int = (
+            nonsing
+            & (u > 0.0) & (u < 1.0)
+            & (v > 0.0) & (v < 1.0)
+        )
+
+        q = qm + alpha[:,np.newaxis]*tu + beta[:,np.newaxis]*tv
+
+        ps.register_point_cloud('close node-face',np.concatenate((p[valid_int],q[valid_int]),axis=0))
+
 
     @profile
     def computeBarycentricEdges(self, phi_mat):
@@ -1257,7 +1320,7 @@ class Cloth:
         self.ss = self.ss[inds_cls]
         self.tt = self.tt[inds_cls]
 
-        ps.register_point_cloud('close',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
+        ps.register_point_cloud('close edge-edge',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
 
     
     def projectVectorInPlane(self,q,q1,q2):
@@ -1492,7 +1555,7 @@ class Cloth:
                 phi = self.tableCollisions(phi)
 
             inds_ee = np.nonzero(self.vals_ee < np.inf)[0]
-            if inds_ee.shape[0] > 0:
+            if inds_ee.shape[0] < 0:
                 print("Close edge-edge")
                 print(np.vstack([self.near_ee0[inds_ee],self.near_ee1[inds_ee]]).T)
                 print("Barycentric")
