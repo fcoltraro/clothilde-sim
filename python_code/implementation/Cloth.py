@@ -1189,8 +1189,8 @@ class Cloth:
             self.computeClosePairs(phi_mat) #update close pairs
             self.last_check = phi_mat #update last checked mesh
             self.den_last = self.innerProduct(self.last_check,self.last_check)
-            print("Close node-face")
-            print(np.vstack([self.near_nf0,self.near_nf1]).T)
+            #print("Close node-face")
+            #print(np.vstack([self.near_nf0,self.near_nf1]).T)
             self.computeBarycentricEdges(phi_mat)
             self.computeBarycentricFaces(phi_mat)
 
@@ -1222,8 +1222,13 @@ class Cloth:
             & (u > 0.0) & (u < 1.0)
             & (v > 0.0) & (v < 1.0)
         )
+        w0 = (1-u)*(1-v)
+        w1 = u*(1-v)
+        w2 = u*v
+        w3 = (1-u)*v
 
-        q = qm + alpha[:,np.newaxis]*tu + beta[:,np.newaxis]*tv
+        #q = qm + alpha[:,np.newaxis]*tu + beta[:,np.newaxis]*tv
+        q = w0[:,np.newaxis]*q0 + w1[:,np.newaxis]*q1 + w2[:,np.newaxis]*q2 + w3[:,np.newaxis]*q3
 
         ps.register_point_cloud('close node-face',np.concatenate((p[valid_int],q[valid_int]),axis=0))
 
