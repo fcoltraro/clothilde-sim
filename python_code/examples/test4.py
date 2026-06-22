@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 # Caida libre
-na = 7; nb = 7
+na = 9; nb = 9
 m = np.int32(np.floor(na/2))
 np.random.seed(1)
 X, T = createRectangularMesh(a = 0.6, b = 0.6, na = na, nb = nb, h = 0.1)
@@ -27,7 +27,7 @@ self.plotMesh()
 inds = [m-1, nb*na - m-1]
 u = self.positions[inds]
 start_time = time.time()
-for i in range(273):
+for i in range(264):
     print("Iteration: ",i)
     if i == -int(tf/2):
         inds = [0]

@@ -963,33 +963,71 @@ class Cloth:
     def selfCollisions(self,phi,n_iter,max_iters=50):    
         if n_iter == 0:
             #precompute objects for selfcollisions
-            self.prepareCollisions(phi)        
-        #check for possible selfcollisions
-        self.updateCollisionsEdges(phi)
+            self.prepareCollisions(phi)   
 
-        if False: #self.error_slf < -self.tol: #correct detected self-collisions
+        #1) check for possible interior faces selfcollisions
+        self.updateCollisionsFaces(phi)
+
+        if self.error_nf < -self.tol: #correct detected self-collisions
             #add new and previous selfcollisions
-            ind_s = np.nonzero((self.vals_slf/self.rads) < self.tol)[0]
-            self.ind_slf = self.unionMask(self.ind_slf,ind_s)
+            ind_s = np.nonzero((self.vals_nf/(2*self.rad)) < self.tol)[0]
+            self.ind_slf_nf = self.unionMask(self.ind_slf_nf,ind_s)
             #correction for positions
-            dlt_phi = self.solveLCP(max_iters)
-            
-            #lets project into stretch space
-            b = -self.stretch.grad@dlt_phi
-            dlt_lambda = self.stretch.factor(b)
-            prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
-            dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
+            #dlt_phi = self.solveFacesLCP(max_iters)
+            dlt_phi = 0*phi
+            phi += dlt_phi
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
-                F_mu = self.computeFrictionCorrection(phi + dlt_phi,dlt_phi)
-            else:
-                F_mu = 0*phi
+                F_mu = self.computeFrictionCorrection(phi,dlt_phi)
+                phi += F_mu
 
-            #update phi
-            phi += dlt_phi + F_mu
+        #2) check for possible edges selfcollisions
+        self.updateCollisionsEdges(phi)
+
+        if self.error_ee < -self.tol: #correct detected self-collisions
+            #add new and previous selfcollisions
+            ind_s = np.nonzero((self.vals_ee/(2*self.rad)) < self.tol)[0]
+            self.ind_slf_ee = self.unionMask(self.ind_slf_ee,ind_s)
+            #correction for positions
+            #dlt_phi = self.solveEdgesLCP(max_iters)
+            dlt_phi = 0*phi
+            phi += dlt_phi
+            
+            #apply friction if needed
+            if self.mu_self > 0 and n_iter < 5:
+                F_mu = self.computeFrictionCorrection(phi,dlt_phi)
+                phi += F_mu
             
         return phi
+    
+    @profile
+    def updateCollisionsFaces(self,phi): 
+        phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+        #assume we already have the baryentric coordinates
+        p = phi_mat[self.near_nf0]
+        q0 = phi_mat[self.f0[self.near_nf1]]
+        q1 = phi_mat[self.f1[self.near_nf1]]
+        q2 = phi_mat[self.f2[self.near_nf1]]
+        q3 = phi_mat[self.f3[self.near_nf1]]
+        #closest points
+        q = self.w0*q0 + self.w1*q1 + self.w2*q2 + self.w3*q3
+
+        #simplified CCD for the faces
+        pq = q - p
+        #normal
+        norm_pq = self.computeNorm(pq)
+        normal_all = pq / norm_pq[:,np.newaxis]
+        #orient normal
+        res0 = self.innerProduct(self.pq0_nf,normal_all); flip = (res0 < 0); 
+        normal_all[flip] = -normal_all[flip]; norm_pq[flip] = -norm_pq[flip]             
+        #evaluate the constraints
+        self.vals_nf = norm_pq - 2*self.rad
+        self.normals_nf = normal_all 
+        if self.vals_nf.shape[0] > 0:
+           self.error_nf = np.min(self.vals_nf/(2*self.rad))
+        else:
+           self.error_nf = 1
     
     @profile
     def updateCollisionsEdges(self,phi): 
@@ -1009,7 +1047,7 @@ class Cloth:
         norm_pq = self.computeNorm(pq)
         normal_all = pq / norm_pq[:,np.newaxis]
         #orient normal
-        res0 = self.innerProduct(self.pq0,normal_all); flip = (res0 < 0); 
+        res0 = self.innerProduct(self.pq0_ee,normal_all); flip = (res0 < 0); 
         normal_all[flip] = -normal_all[flip]; norm_pq[flip] = -norm_pq[flip]             
         #evaluate the constraints
         self.vals_ee = norm_pq - 2*self.rad
@@ -1155,9 +1193,6 @@ class Cloth:
         #potential colliding nodes-nodes
         self.near_ee0 = ei; self.near_ee1 = ej
 
-        #mask for indices
-        self.mask_ee = np.zeros(self.near_ee0.shape[0], dtype=bool)
-
         #build the tree only for the faces
         tree_n = KDTree(phi_mat)
 
@@ -1177,8 +1212,9 @@ class Cloth:
         #potential colliding nodes-faces
         self.near_nf0 = nj; self.near_nf1 = fi
 
+
         #mask for indices
-        self.mask_nf = np.zeros(self.near_nf0.shape[0], dtype=bool)
+        self.mask_col = np.zeros(np.maximum(ei.shape[0],nj.shape[0]), dtype=bool)
 
     @profile
     def updateClosePairs(self,phi_mat):
@@ -1215,22 +1251,35 @@ class Cloth:
         # ------------------------------------------------------------
 
         alpha, beta, nonsing, _, _ = self.projectVectorInPlane(p - qm, tu, tv)
-        u = 0.5+alpha; v = 0.5+beta
 
-        valid_int = (
-            nonsing
+        u = 0.5+alpha; v = 0.5+beta
+        
+        w0 = (1-u)*(1-v); self.w0 = w0[:,np.newaxis]
+        w1 = u*(1-v); self.w1 = w1[:,np.newaxis]
+        w2 = u*v; self.w2 = w2[:,np.newaxis]
+        w3 = (1-u)*v; self.w3 = w3[:,np.newaxis]
+
+        q = self.w0*q0 + self.w1*q1 + self.w2*q2 + self.w3*q3
+
+        norm_pq = self.computeNorm(q-p)
+
+        valid = (
+            nonsing & (norm_pq < 4*self.rad)
             & (u > 0.0) & (u < 1.0)
             & (v > 0.0) & (v < 1.0)
         )
-        w0 = (1-u)*(1-v)
-        w1 = u*(1-v)
-        w2 = u*v
-        w3 = (1-u)*v
 
-        #q = qm + alpha[:,np.newaxis]*tu + beta[:,np.newaxis]*tv
-        q = w0[:,np.newaxis]*q0 + w1[:,np.newaxis]*q1 + w2[:,np.newaxis]*q2 + w3[:,np.newaxis]*q3
 
-        ps.register_point_cloud('close node-face',np.concatenate((p[valid_int],q[valid_int]),axis=0))
+        #update arrays
+        self.near_nf0 = self.near_nf0[valid]
+        self.near_nf1 = self.near_nf1[valid]
+        self.w0 = self.w0[valid]
+        self.w1 = self.w1[valid]
+        self.w2 = self.w2[valid]
+        self.w3 = self.w3[valid]
+
+        ps.register_point_cloud('close node-face',np.concatenate((p[valid],q[valid]),axis=0))
+        ps.get_point_cloud('close node-face').set_radius(rad=self.rad,relative=False)
 
 
     @profile
@@ -1326,6 +1375,8 @@ class Cloth:
         self.tt = self.tt[inds_cls]
 
         ps.register_point_cloud('close edge-edge',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
+        ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
+
 
     
     def projectVectorInPlane(self,q,q1,q2):
@@ -1412,9 +1463,19 @@ class Cloth:
         #closest points
         p = (1-self.ss)*p0 + self.ss*p1
         q = (1-self.tt)*q0 + self.tt*q1
-        self.pq0 = q - p
+        self.pq0_ee = q - p
+        #now for the other case
+        p = self.positions[self.near_nf0]
+        q0 = self.positions[self.f0[self.near_nf1]]
+        q1 = self.positions[self.f1[self.near_nf1]]
+        q2 = self.positions[self.f2[self.near_nf1]]
+        q3 = self.positions[self.f3[self.near_nf1]]
+        #closest points
+        q = self.w0*q0 + self.w1*q1 + self.w2*q2 + self.w3*q3
+        self.pq0_nf = q - p
         #store past collisions
-        self.ind_slf = self.empty
+        self.ind_slf_ee = self.empty
+        self.ind_slf_nf = self.empty
         #store if floor collisions have happened
         self.flr = True
     
@@ -1567,6 +1628,15 @@ class Cloth:
                 print(np.hstack([self.ss[inds_ee],self.tt[inds_ee]]))
                 print("error")
                 print(self.vals_ee[inds_ee])
+
+            inds_nf = np.nonzero(self.vals_nf < np.inf)[0]
+            if inds_nf.shape[0] < 0:
+                print("Close node-face")
+                print(np.vstack([self.near_nf0[inds_nf],self.near_nf1[inds_nf]]).T)
+                print("Barycentric")
+                print(np.hstack([self.w0[inds_nf],self.w1[inds_nf],self.w2[inds_nf],self.w3[inds_nf]]))
+                print("error")
+                print(self.vals_nf[inds_nf])
                 
 
 
