@@ -959,16 +959,51 @@ class Cloth:
         F_mu = self.frictionForce(self.mu_self,norm_Fn,vt,cap = True)
         return F_mu.flatten(order='F')
     
+    def cullRedundantEdgeConstraints(self, max_per_edge=2):
+        """
+        Keep only the most penetrating edge-edge constraints, with a cap on how
+        many constraints each mesh edge can participate in.
+        """
+
+        ind = self.ind_slf_ee
+
+        if ind.shape[0] == 0:
+            return
+
+        # Candidate edge ids
+        eA = self.near_ee0[ind]
+        eB = self.near_ee1[ind]
+
+        # Most penetrating first: vals_ee is C = distance - radius.
+        # Negative is penetrating, more negative is more important.
+        order = np.argsort(self.vals_ee[ind])
+
+        n_edges = self.e0.shape[0]
+        edge_count = np.zeros(n_edges, dtype=int)
+
+        keep = np.zeros(ind.shape[0], dtype=bool)
+
+        for loc in order:
+            ea = eA[loc]
+            eb = eB[loc]
+
+            if edge_count[ea] < max_per_edge and edge_count[eb] < max_per_edge:
+                keep[loc] = True
+                edge_count[ea] += 1
+                edge_count[eb] += 1
+
+        self.ind_slf_ee = ind[keep]
+    
     @profile
-    def selfCollisions(self,phi,n_iter,max_iters=50):    
+    def selfCollisions(self,phi,n_iter,max_iters=100):    
         if n_iter == 0:
             #precompute objects for selfcollisions
             self.prepareCollisions(phi)   
 
         #1) check for possible interior faces selfcollisions
-        self.updateCollisionsFaces(phi)
+        #self.updateCollisionsFaces(phi)
 
-        if self.error_nf < -self.tol: #correct detected self-collisions
+        if False: #self.error_nf < -self.tol: #correct detected self-collisions
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_nf/(2*self.rad)) < self.tol)[0]
             self.ind_slf_nf = self.unionMask(self.ind_slf_nf,ind_s)
@@ -985,19 +1020,21 @@ class Cloth:
         #2) check for possible edges selfcollisions
         self.updateCollisionsEdges(phi)
 
-        if self.error_ee < -self.tol: #correct detected self-collisions
+        if self.error_ee < self.tol: #correct detected self-collisions
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_ee/(2*self.rad)) < self.tol)[0]
             self.ind_slf_ee = self.unionMask(self.ind_slf_ee,ind_s)
+            #self.cullRedundantEdgeConstraints(max_per_edge=3)
             #correction for positions
-            #dlt_phi = self.solveEdgesLCP(max_iters)
-            dlt_phi = 0*phi
+            dlt_phi = self.solveEdgesLCP(max_iters)
+            #dlt_phi = 0*phi
             phi += dlt_phi
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
                 F_mu = self.computeFrictionCorrection(phi,dlt_phi)
                 phi += F_mu
+        self.updateCollisionsEdges(phi)
             
         return phi
     
@@ -1056,6 +1093,81 @@ class Cloth:
            self.error_ee = np.min(self.vals_ee/(2*self.rad))
         else:
            self.error_ee = 1
+
+
+    @profile
+    def solveEdgesLCP(self, max_iter = 100):
+        #take only needed normals
+        normals = self.normals_ee[self.ind_slf_ee]
+        #and barycentric coordinates
+        aa = self.a_e[self.ind_slf_ee]
+        bb = self.b_e[self.ind_slf_ee]
+        cc = self.c_e[self.ind_slf_ee]
+        dd = self.d_e[self.ind_slf_ee]
+        #indices of involved nodes
+        e0_col = self.near_ee0[self.ind_slf_ee]
+        e1_col = self.near_ee1[self.ind_slf_ee]
+        ind_p0 = self.e0[e0_col]; ind_p1 = self.e1[e0_col]
+        ind_q0 = self.e0[e1_col]; ind_q1 = self.e1[e1_col]
+        ind_all = np.concatenate([ind_p0,ind_p1,ind_q0,ind_q1])
+    
+        #counts to take average impulses 
+        #count = np.bincount(ind_all, minlength=self.n_verts)
+        
+        eps_w = 1e-3
+        count = np.zeros(self.n_verts)
+        np.add.at(count, ind_p0[aa > eps_w], 1.0)
+        np.add.at(count, ind_p1[bb > eps_w], 1.0)
+        np.add.at(count, ind_q0[cc > eps_w], 1.0)
+        np.add.at(count, ind_q1[dd > eps_w], 1.0)
+        
+        #averages
+        avg = 1/(count + 1e-12); avg[count == 0] = 0; 
+        #mass inverses: set controled to zero
+        w = self.m_inv.copy(); w[self.control] = 0
+        wa  = (avg*w)[:,np.newaxis]      
+
+        #initial impulses
+        num = -self.vals_ee[self.ind_slf_ee]; 
+        den = (aa**2)*w[ind_p0] + (bb**2)*w[ind_p1] + (cc**2)*w[ind_q0] + (dd**2)*w[ind_q1] + self.slf
+        landa = np.maximum(0,num/den)
+        #corrections
+        dlt = landa[:,np.newaxis]*normals
+        dlt_a = -aa[:,np.newaxis]*dlt
+        dlt_b = -bb[:,np.newaxis]*dlt
+        dlt_c = +cc[:,np.newaxis]*dlt
+        dlt_d = +dd[:,np.newaxis]*dlt
+        dlt_all = np.concatenate([dlt_a,dlt_b,dlt_c,dlt_d], axis = 0)
+        #global correction
+        dlt_tot = np.zeros((self.n_verts,3))
+        np.add.at(dlt_tot,ind_all,dlt_all); 
+        dlt_phi = wa*dlt_tot
+
+        #iterative process
+        error_l = -1; ii = 0
+        while error_l < -self.tol and ii < max_iter:  
+            dlt_pq = (-aa[:,np.newaxis]*dlt_phi[ind_p0] -bb[:,np.newaxis]*dlt_phi[ind_p1] 
+                      +cc[:,np.newaxis]*dlt_phi[ind_q0] +dd[:,np.newaxis]*dlt_phi[ind_q1]
+                      )
+            dlt_vals = -self.innerProduct(normals,dlt_pq)
+            #compute multipliers
+            res = num + dlt_vals - self.slf*landa
+            error_l = np.min(-res/(2*self.rad))
+            landa = np.maximum(0, landa + res/den)
+            #corrections
+            dlt = landa[:,np.newaxis]*normals
+            dlt_a = -aa[:,np.newaxis]*dlt
+            dlt_b = -bb[:,np.newaxis]*dlt
+            dlt_c = +cc[:,np.newaxis]*dlt
+            dlt_d = +dd[:,np.newaxis]*dlt
+            dlt_all = np.concatenate([dlt_a,dlt_b,dlt_c,dlt_d], axis = 0)
+            #global correction
+            dlt_tot.fill(0.0)
+            np.add.at(dlt_tot,ind_all,dlt_all); 
+            dlt_phi = wa*dlt_tot
+            ii += 1
+        print(ii)
+        return dlt_phi.flatten(order='F')
 
 
     @profile
@@ -1278,8 +1390,8 @@ class Cloth:
         self.w2 = self.w2[valid]
         self.w3 = self.w3[valid]
 
-        ps.register_point_cloud('close node-face',np.concatenate((p[valid],q[valid]),axis=0))
-        ps.get_point_cloud('close node-face').set_radius(rad=self.rad,relative=False)
+        #ps.register_point_cloud('close node-face',np.concatenate((p[valid],q[valid]),axis=0))
+        #ps.get_point_cloud('close node-face').set_radius(rad=self.rad,relative=False)
 
 
     @profile
@@ -1362,6 +1474,10 @@ class Cloth:
 
         self.ss = u[:,np.newaxis]
         self.tt = v[:,np.newaxis]
+        self.a_e = 1-u
+        self.b_e = u
+        self.c_e = 1-v
+        self.d_e = v 
         #TODO: only do this for interior ones and reuse computed distances
         p = p0 + self.ss * dp
         q = q0 + self.tt * dq
@@ -1376,6 +1492,52 @@ class Cloth:
 
         ps.register_point_cloud('close edge-edge',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
         ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
+
+    @profile
+    def computeBarycentricEdges2(self, phi_mat):
+        #fancy indexing (precompute interior)
+        p0 = phi_mat[self.e0[self.near_ee0]]
+        p1 = phi_mat[self.e1[self.near_ee0]]
+        q0 = phi_mat[self.e0[self.near_ee1]]
+        q1 = phi_mat[self.e1[self.near_ee1]]
+        #direction vectors
+        dp = p1 - p0; dq = q1 - q0
+
+        # ------------------------------------------------------------
+        # Interior line-line candidate:
+        #
+        #     q0 - p0 = u dp - v dq
+        # ------------------------------------------------------------
+
+        u_int, v_int, nonsing, dp2, dq2 = self.projectVectorInPlane(q0 - p0, dp, -dq)
+        self.ss = u_int[:,np.newaxis]
+        self.tt = v_int[:,np.newaxis]
+
+        #TODO: only do this for interior ones and reuse computed distances
+        p = p0 + self.ss * dp
+        q = q0 + self.tt * dq
+        norm_pq = self.computeNorm(q-p)
+
+        valid_int = (
+            nonsing & (norm_pq < 5*self.rad)
+            & (u_int > 0.0) & (u_int < 1.0)
+            & (v_int > 0.0) & (v_int < 1.0)
+        )
+
+        #update arrays
+        self.near_ee0 = self.near_ee0[valid_int]
+        self.near_ee1 = self.near_ee1[valid_int]
+        self.ss = self.ss[valid_int]
+        self.tt = self.tt[valid_int]
+
+        self.a_e = 1-u_int[valid_int]
+        self.b_e = u_int[valid_int]
+        self.c_e = 1-v_int[valid_int]
+        self.d_e = v_int[valid_int]
+
+        ps.register_point_cloud('close edge-edge',np.concatenate((p[valid_int],q[valid_int]),axis=0))
+        ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
+
 
 
     
@@ -1598,9 +1760,9 @@ class Cloth:
             lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
 
             #solver variables for inextensiblity 
-            n_iter = 0; error_str = np.inf; error_shr = np.inf; 
+            n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_ee = 0
 
-            while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: 
+            while (error_str > self.tol or error_shr > self.tol or self.error_ee < -self.tol) and n_iter < 100: 
 
                 #shearing
                 phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
@@ -1617,6 +1779,8 @@ class Cloth:
                 #iteration count 
                 n_iter += 1
 
+            print("iters:",n_iter)
+
             if self.table is True:
                 phi = self.tableCollisions(phi)
 
@@ -1629,7 +1793,7 @@ class Cloth:
                 print("error")
                 print(self.vals_ee[inds_ee])
 
-            inds_nf = np.nonzero(self.vals_nf < np.inf)[0]
+            inds_nf = np.nonzero(self.vals_ee < np.inf)[0]
             if inds_nf.shape[0] < 0:
                 print("Close node-face")
                 print(np.vstack([self.near_nf0[inds_nf],self.near_nf1[inds_nf]]).T)
