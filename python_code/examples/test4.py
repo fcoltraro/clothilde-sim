@@ -24,10 +24,10 @@ self.setSimulatorParameters(dt=dt,tol=0.005,
 tf = int(1.5/dt)
 print(tf)
 self.plotMesh()
-inds = [m, nb*na - m-1]
+inds = [m-1, nb*na - m-1]
 u = self.positions[inds]
 start_time = time.time()
-for i in range(223):
+for i in range(263):
     print("Iteration: ",i)
     if i == -int(tf/2):
         inds = [0]

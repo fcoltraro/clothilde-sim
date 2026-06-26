@@ -1020,7 +1020,7 @@ class Cloth:
         #2) check for possible edges selfcollisions
         self.updateCollisionsEdges(phi)
 
-        if self.error_ee < self.tol: #correct detected self-collisions
+        if self.error_ee < -self.tol: #correct detected self-collisions
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_ee/(2*self.rad)) < self.tol)[0]
             self.ind_slf_ee = self.unionMask(self.ind_slf_ee,ind_s)
@@ -1029,6 +1029,8 @@ class Cloth:
             dlt_phi = self.solveEdgesLCP(max_iters)
             #dlt_phi = 0*phi
             phi += dlt_phi
+
+            self.checkCollisionsEdges(phi)
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
@@ -1093,6 +1095,24 @@ class Cloth:
            self.error_ee = np.min(self.vals_ee/(2*self.rad))
         else:
            self.error_ee = 1
+
+    def checkCollisionsEdges(self,phi): 
+        phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+        #assume we already have the baryentric coordinates
+        p0 = phi_mat[self.e0[self.near_ee0]]
+        p1 = phi_mat[self.e1[self.near_ee0]]
+        q0 = phi_mat[self.e0[self.near_ee1]]
+        q1 = phi_mat[self.e1[self.near_ee1]]
+        #closest points
+        p = (1-self.ss)*p0 + self.ss*p1
+        q = (1-self.tt)*q0 + self.tt*q1
+
+        #simplified CCD for the edges
+        pq = q - p
+        res = self.innerProduct(pq,self.normals_ee);         
+        #evaluate the constraints
+        print((res - 2*self.rad)/(2*self.rad))
+
 
 
     @profile
@@ -1778,6 +1798,8 @@ class Cloth:
 
                 #iteration count 
                 n_iter += 1
+
+                print(self.error_ee)
 
             print("iters:",n_iter)
 
