@@ -1030,7 +1030,7 @@ class Cloth:
             #dlt_phi = 0*phi
             phi += dlt_phi
 
-            self.checkCollisionsEdges(phi)
+            #self.checkCollisionsEdges(phi)
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
@@ -1111,7 +1111,7 @@ class Cloth:
         pq = q - p
         res = self.innerProduct(pq,self.normals_ee);         
         #evaluate the constraints
-        print((res - 2*self.rad)/(2*self.rad))
+        print('Error after LCP',(res - 2*self.rad)/(2*self.rad))
 
 
 
@@ -1151,6 +1151,7 @@ class Cloth:
         num = -self.vals_ee[self.ind_slf_ee]; 
         den = (aa**2)*w[ind_p0] + (bb**2)*w[ind_p1] + (cc**2)*w[ind_q0] + (dd**2)*w[ind_q1] + self.slf
         landa = np.maximum(0,num/den)
+
         #corrections
         dlt = landa[:,np.newaxis]*normals
         dlt_a = -aa[:,np.newaxis]*dlt
@@ -1166,13 +1167,13 @@ class Cloth:
         #iterative process
         error_l = -1; ii = 0
         while error_l < -self.tol and ii < max_iter:  
-            dlt_pq = (-aa[:,np.newaxis]*dlt_phi[ind_p0] -bb[:,np.newaxis]*dlt_phi[ind_p1] 
-                      +cc[:,np.newaxis]*dlt_phi[ind_q0] +dd[:,np.newaxis]*dlt_phi[ind_q1]
-                      )
+            dlt_pq = - (aa[:,np.newaxis]*dlt_phi[ind_p0]) - (bb[:,np.newaxis]*dlt_phi[ind_p1]) + (cc[:,np.newaxis]*dlt_phi[ind_q0]) + (dd[:,np.newaxis]*dlt_phi[ind_q1])
+                      
             dlt_vals = -self.innerProduct(normals,dlt_pq)
             #compute multipliers
             res = num + dlt_vals - self.slf*landa
             error_l = np.min(-res/(2*self.rad))
+            #print('error LCP: ',error_l)
             landa = np.maximum(0, landa + res/den)
             #corrections
             dlt = landa[:,np.newaxis]*normals
@@ -1186,7 +1187,7 @@ class Cloth:
             np.add.at(dlt_tot,ind_all,dlt_all); 
             dlt_phi = wa*dlt_tot
             ii += 1
-        print(ii)
+        print('iterations LCP: ',ii)
         return dlt_phi.flatten(order='F')
 
 
@@ -1509,6 +1510,10 @@ class Cloth:
         self.near_ee1 = self.near_ee1[inds_cls]
         self.ss = self.ss[inds_cls]
         self.tt = self.tt[inds_cls]
+        self.a_e = self.a_e[inds_cls]
+        self.b_e = self.b_e[inds_cls]
+        self.c_e = self.c_e[inds_cls]
+        self.d_e = self.d_e[inds_cls]
 
         ps.register_point_cloud('close edge-edge',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
         ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
@@ -1799,9 +1804,9 @@ class Cloth:
                 #iteration count 
                 n_iter += 1
 
-                print(self.error_ee)
+                #print('global edges error: ',self.error_ee)
 
-            print("iters:",n_iter)
+            print("global iters:",n_iter)
 
             if self.table is True:
                 phi = self.tableCollisions(phi)
