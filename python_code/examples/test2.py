@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 # Caida libre
-n = 27; na = n; nb = n
+n = 25; na = n; nb = n
 np.random.seed(1)
 X, T = createRectangularMesh(a = 0.7, b = 0.7, na = na, nb = nb, h = 0.1)
 X[:,2] += 0.35; 

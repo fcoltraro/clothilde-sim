@@ -51,7 +51,7 @@ class Cloth:
         self.seams_IJK = [self.Is,self.Js,self.Ks]
 
         #for self-collisions
-        self.rad = 0.003 #radious of the balls
+        self.rad = 0.004 #radious of the balls
         self.last_check = np.array(verts, order = 'F') #for checking close self-collision pairs
         self.den_last = 1
         self.ke = 12 #get k nearest nodes to every node
@@ -159,6 +159,7 @@ class Cloth:
         self.prepareMatrices()
         self.computeStretchShear()
         self.precomputeBoundaryBending()
+        self.assembleQuadFlatnessK()
 
     def checkQuadMesh(self):
         pass
@@ -301,7 +302,7 @@ class Cloth:
             self.m_inv = m_inv
             self.m_inv_mat = self.m_inv[:,np.newaxis] #column matrix
             self.M_lum = sp.block_diag((M_lum, M_lum, M_lum)).tocsc()
-            self.m_lum = m_lum[:,np.newaxis] #vector form
+            self.m_lum = m_lum[:,np.newaxis] #matrix form
 
             self.m_sqrt = np.concatenate([m_sqrt, m_sqrt, m_sqrt]) #3-vector form
             self.m_sqrt_mat = self.m_sqrt.reshape((-1,),order = 'F') #column matrix
@@ -399,7 +400,86 @@ class Cloth:
 
         # Boundary bending stiffness/operator in same style as interior: Kb = Lb^T Minv Lb
         self.Kb = (Lb.T @ Minv_b @ Lb).tocsc()
-    
+
+
+    def assembleQuadFlatnessK(self, k_flat=1.0, use_mass_weight=True):
+        """
+        Assemble sparse stiffness matrix K for quad flatness energy:
+
+            E = 1/2 sum_q w_q || x00 - x10 - x01 + x11 ||^2
+
+        Assumes self.faces contains quads ordered as:
+
+            [v00, v10, v11, v01]
+
+        Then the stencil in face ordering is:
+
+            [+1, -1, +1, -1]
+
+        Parameters
+        ----------
+        k_flat : float
+            Global flatness stiffness multiplier.
+
+        use_mass_weight : bool
+            If True, use a mass-normalized weight similar in spirit to L^T M^{-1} L.
+            If False, every quad receives weight k_flat.
+
+        Returns
+        -------
+        K : scipy.sparse.csc_matrix, shape (n_verts, n_verts)
+            Scalar stiffness matrix. For positions x of shape (n_verts, 3),
+            use:
+
+                f_flat = -K @ x
+
+        """
+
+        faces = np.asarray(self.faces, dtype=np.int64)
+        n_verts = self.n_verts
+
+        assert faces.ndim == 2 and faces.shape[1] == 4
+
+        # Face order: [v00, v10, v11, v01]
+        signs = np.array([1.0, -1.0, 1.0, -1.0])
+
+        rows = []
+        cols = []
+        data = []
+
+        m_lum = np.asarray(self.m_lum, dtype=float)
+
+        for f in faces:
+            if use_mass_weight:
+                # Approximate mass associated with this quad.
+                # Since m_lum is vertex-lumped, summing the four vertex masses
+                # is a reasonable local scale.
+                m_q = np.sum(m_lum[f])
+
+                if m_q <= 0.0:
+                    continue
+
+                w_q = k_flat / m_q
+            else:
+                w_q = k_flat
+
+            # Local K_q = w_q * s^T s
+            for a in range(4):
+                ia = f[a]
+                sa = signs[a]
+
+                for b in range(4):
+                    ib = f[b]
+                    sb = signs[b]
+
+                    rows.append(ia)
+                    cols.append(ib)
+                    data.append(w_q * sa * sb)
+
+        self.Kflat = sp.coo_matrix(
+            (data, (rows, cols)),
+            shape=(n_verts, n_verts)
+        ).tocsc()    
     
     def computeStretchShear(self):
         neighs_xi = {i: set() for i in range(self.n_verts)}
@@ -627,9 +707,9 @@ class Cloth:
         self.polyscoped = True
         ps.init()
         ps.remove_all_structures()
-        #ps.register_surface_mesh(self.label, self.Am@self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
-        ps.register_surface_mesh(self.label, self.positions, self.faces, smooth_shade=True, transparency=0.9, edge_width = 0)
-        ps.register_curve_network(self.label,self.positions,self.edges_matrix,enabled=True)
+        ps.register_surface_mesh(self.label, self.Am@self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
+        #ps.register_surface_mesh(self.label, self.positions, self.faces, smooth_shade=True, transparency=0.9)#, edge_width = 0)
+        ps.register_curve_network(self.label,self.positions,self.edges_matrix,enabled=False)
         ps.set_up_dir("z_up")
         ps.set_ground_plane_mode("tile_reflection")  # set +Z as up direction
         ps.set_ground_plane_height(-0.005) # adjust the plane height
@@ -639,8 +719,8 @@ class Cloth:
         if self.polyscoped is False:
             self.preparePolyscope()
         """Plot the current mesh"""
-        #ps.get_surface_mesh(self.label).update_vertex_positions(self.Am@self.positions)
-        ps.get_surface_mesh(self.label).update_vertex_positions(self.positions)
+        ps.get_surface_mesh(self.label).update_vertex_positions(self.Am@self.positions)
+        #ps.get_surface_mesh(self.label).update_vertex_positions(self.positions)
         ps.get_curve_network(self.label).update_node_positions(self.positions)
         if self.rad is not None:
            ps.get_curve_network(self.label).set_radius(rad=self.rad,relative=False)
@@ -659,7 +739,7 @@ class Cloth:
             phi_all = self.Am@phi_mat
             for _ in range(smooth):
                 phi_all = self.S@phi_all
-            ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
+            ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
             ps.get_curve_network(self.label).update_node_positions(phi_mat)
 
             # Advance simulation time by skipping frames accordingly
@@ -673,7 +753,7 @@ class Cloth:
                    phi_all = self.Am@phi_mat
                    for _ in range(smooth):
                        phi_all = self.S@phi_all
-                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
+                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
                    ps.get_curve_network(self.label).update_node_positions(phi_mat)
                    ps.clear_user_callback()
 
@@ -724,8 +804,8 @@ class Cloth:
         #constant radious of the balls
         #self.rad = self.thck*np.mean(longs)/2.05
         self.max_step = self.max_mov*np.mean(longs)
-        self.eps_ee = 1.05*np.max(longs)
-        self.eps_nf = 1.05*np.max([max0,max1])
+        self.eps_ee = 1.1*np.max(longs)
+        self.eps_nf = 1.1*np.max([max0,max1])
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -746,7 +826,7 @@ class Cloth:
  
     def setSimulatorParameters(self, dt = 1/60, tol = 0.0075, sub_steps = 10,
                                rho = 0.1, delta = 0.1, alpha = 0.2,
-                               kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
+                               kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, kappa_flt = 0.5*1e-4,
                                str = 0.01*1e-4, shr = 10*1e-4, slf = 1*1e-4,
                                mu_f = 0.2, mu_s = 0.35, thck = 0.95, max_mov= 0.1):
         #solver parameters
@@ -764,6 +844,7 @@ class Cloth:
         self.alpha = alpha # slow damping 
         self.kappa = kappa # bending stiffness
         self.kappa_bnd = kappa_bnd # bending stiffness
+        self.kappa_flt = kappa_flt # bending stiffness
         self.beta = 0.02*self.kappa # fast damping: do not change in general
         self.str = str/(self.dt**2) # stretch elasticity
         self.shr = shr/(self.dt**2) # shear elasticity
@@ -781,7 +862,8 @@ class Cloth:
 
         #factorize implicit step matrix E for fast unconstrained step
         D = self.alpha*self.M + self.beta*self.K 
-        K = self.kappa*self.K + self.kappa_bnd*self.Kb; M = self.rho*self.M; 
+        K = self.kappa*self.K + self.kappa_bnd*self.Kb + self.kappa_flt*self.Kflat; 
+        M = self.rho*self.M; 
         E = M + self.dt*D + (self.dt**2)*K 
         Et = M + 0.5*self.dt*D + 0.25*(self.dt**2)*K 
 
@@ -1001,21 +1083,23 @@ class Cloth:
             self.prepareCollisions(phi)   
 
         #1) check for possible interior faces selfcollisions
-        #self.updateCollisionsFaces(phi)
+        self.updateCollisionsFaces(phi)
 
-        if False: #self.error_nf < -self.tol: #correct detected self-collisions
+        if self.error_nf < -self.tol: #correct detected self-collisions
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_nf/(2*self.rad)) < self.tol)[0]
             self.ind_slf_nf = self.unionMask(self.ind_slf_nf,ind_s)
             #correction for positions
-            #dlt_phi = self.solveFacesLCP(max_iters)
-            dlt_phi = 0*phi
+            dlt_phi = self.solveFacesLCP(max_iters)
             phi += dlt_phi
+
+            #self.checkCollisionsFaces(phi)
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
                 F_mu = self.computeFrictionCorrection(phi,dlt_phi)
                 phi += F_mu
+        self.updateCollisionsFaces(phi)
 
         #2) check for possible edges selfcollisions
         self.updateCollisionsEdges(phi)
@@ -1067,7 +1151,25 @@ class Cloth:
            self.error_nf = np.min(self.vals_nf/(2*self.rad))
         else:
            self.error_nf = 1
+
+    @profile
+    def checkCollisionsFaces(self,phi): 
+        phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+        #assume we already have the baryentric coordinates
+        p = phi_mat[self.near_nf0]
+        q0 = phi_mat[self.f0[self.near_nf1]]
+        q1 = phi_mat[self.f1[self.near_nf1]]
+        q2 = phi_mat[self.f2[self.near_nf1]]
+        q3 = phi_mat[self.f3[self.near_nf1]]
+        #closest points
+        q = self.w0*q0 + self.w1*q1 + self.w2*q2 + self.w3*q3
+
+        #simplified CCD for the faces
+        pq = q - p
+        res = self.innerProduct(pq,self.normals_nf)
+        print('Error faces after LCP',np.min((res - 2*self.rad)/(2*self.rad)))
     
+
     @profile
     def updateCollisionsEdges(self,phi): 
         phi_mat = phi.reshape((self.n_verts, 3), order='F') 
@@ -1187,7 +1289,75 @@ class Cloth:
             np.add.at(dlt_tot,ind_all,dlt_all); 
             dlt_phi = wa*dlt_tot
             ii += 1
-        print('iterations LCP: ',ii)
+        #print('iterations LCP: ',ii)
+        return dlt_phi.flatten(order='F')
+    
+    @profile
+    def solveFacesLCP(self, max_iter = 100):
+        #take only needed normals
+        normals = self.normals_nf[self.ind_slf_nf]
+        #and barycentric coordinates
+        w0 = self.w0[self.ind_slf_nf]
+        w1 = self.w1[self.ind_slf_nf]
+        w2 = self.w2[self.ind_slf_nf]
+        w3 = self.w3[self.ind_slf_nf]
+        #indices of involved nodes
+        ind_p = self.near_nf0[self.ind_slf_nf]
+        f_col = self.near_nf1[self.ind_slf_nf]
+        ind_q0 = self.f0[f_col]; ind_q1 = self.f1[f_col]
+        ind_q2 = self.f2[f_col]; ind_q3 = self.f3[f_col]
+        ind_all = np.concatenate([ind_p,ind_q0,ind_q1,ind_q2,ind_q3])
+    
+        #counts to take average impulses 
+        count = np.bincount(ind_all, minlength=self.n_verts)
+        
+        #averages
+        avg = 1/(count + 1e-12); avg[count == 0] = 0; 
+        #mass inverses: set controled to zero
+        w = self.m_inv.copy(); w[self.control] = 0
+        wa  = (avg*w)[:,np.newaxis]      
+
+        #initial impulses
+        num = -self.vals_nf[self.ind_slf_nf]; 
+        den = w[ind_p] + (w0[:, 0]**2)*w[ind_q0] + (w1[:, 0]**2)*w[ind_q1] + (w2[:, 0]**2)*w[ind_q2] + (w3[:, 0]**2)*w[ind_q3] + self.slf
+        landa = np.maximum(0,num/den)
+
+        #corrections
+        dlt = landa[:,np.newaxis]*normals
+        dlt0 = +w0*dlt
+        dlt1 = +w1*dlt
+        dlt2 = +w2*dlt
+        dlt3 = +w3*dlt
+        dlt_all = np.concatenate([-dlt,dlt0,dlt1,dlt2,dlt3], axis = 0)
+        #global correction
+        dlt_tot = np.zeros((self.n_verts,3))
+        np.add.at(dlt_tot,ind_all,dlt_all); 
+        dlt_phi = wa*dlt_tot
+
+        #iterative process
+        error_l = -1; ii = 0
+        while error_l < -self.tol and ii < max_iter:  
+            dlt_pq =  (w0*dlt_phi[ind_q0]) + (w1*dlt_phi[ind_q1]) + (w2*dlt_phi[ind_q2]) + (w3*dlt_phi[ind_q3]) - dlt_phi[ind_p]
+                      
+            dlt_vals = -self.innerProduct(normals,dlt_pq)
+            #compute multipliers
+            res = num + dlt_vals - self.slf*landa
+            error_l = np.min(-res/(2*self.rad))
+            #print('error LCP: ',error_l)
+            landa = np.maximum(0, landa + res/den)
+            #corrections
+            dlt = landa[:,np.newaxis]*normals
+            dlt0 = +w0*dlt
+            dlt1 = +w1*dlt
+            dlt2 = +w2*dlt
+            dlt3 = +w3*dlt
+            dlt_all = np.concatenate([-dlt,dlt0,dlt1,dlt2,dlt3], axis = 0)
+            #global correction
+            dlt_tot.fill(0.0)
+            np.add.at(dlt_tot,ind_all,dlt_all); 
+            dlt_phi = wa*dlt_tot
+            ii += 1
+        #print('iterations LCP: ',ii)
         return dlt_phi.flatten(order='F')
 
 
@@ -1360,8 +1530,6 @@ class Cloth:
             self.den_last = self.innerProduct(self.last_check,self.last_check)
             #print("Close node-face")
             #print(np.vstack([self.near_nf0,self.near_nf1]).T)
-            self.computeBarycentricEdges(phi_mat)
-            self.computeBarycentricFaces(phi_mat)
 
     @profile
     def computeBarycentricFaces(self, phi_mat):
@@ -1397,9 +1565,9 @@ class Cloth:
         norm_pq = self.computeNorm(q-p)
 
         valid = (
-            nonsing & (norm_pq < 4*self.rad)
-            & (u > 0.0) & (u < 1.0)
-            & (v > 0.0) & (v < 1.0)
+            nonsing & (norm_pq < 5*self.rad)
+            & (u > 0) & (u < 1)
+            & (v > 0) & (v < 1)
         )
 
 
@@ -1515,54 +1683,8 @@ class Cloth:
         self.c_e = self.c_e[inds_cls]
         self.d_e = self.d_e[inds_cls]
 
-        ps.register_point_cloud('close edge-edge',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
-        ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
-
-    @profile
-    def computeBarycentricEdges2(self, phi_mat):
-        #fancy indexing (precompute interior)
-        p0 = phi_mat[self.e0[self.near_ee0]]
-        p1 = phi_mat[self.e1[self.near_ee0]]
-        q0 = phi_mat[self.e0[self.near_ee1]]
-        q1 = phi_mat[self.e1[self.near_ee1]]
-        #direction vectors
-        dp = p1 - p0; dq = q1 - q0
-
-        # ------------------------------------------------------------
-        # Interior line-line candidate:
-        #
-        #     q0 - p0 = u dp - v dq
-        # ------------------------------------------------------------
-
-        u_int, v_int, nonsing, dp2, dq2 = self.projectVectorInPlane(q0 - p0, dp, -dq)
-        self.ss = u_int[:,np.newaxis]
-        self.tt = v_int[:,np.newaxis]
-
-        #TODO: only do this for interior ones and reuse computed distances
-        p = p0 + self.ss * dp
-        q = q0 + self.tt * dq
-        norm_pq = self.computeNorm(q-p)
-
-        valid_int = (
-            nonsing & (norm_pq < 5*self.rad)
-            & (u_int > 0.0) & (u_int < 1.0)
-            & (v_int > 0.0) & (v_int < 1.0)
-        )
-
-        #update arrays
-        self.near_ee0 = self.near_ee0[valid_int]
-        self.near_ee1 = self.near_ee1[valid_int]
-        self.ss = self.ss[valid_int]
-        self.tt = self.tt[valid_int]
-
-        self.a_e = 1-u_int[valid_int]
-        self.b_e = u_int[valid_int]
-        self.c_e = 1-v_int[valid_int]
-        self.d_e = v_int[valid_int]
-
-        ps.register_point_cloud('close edge-edge',np.concatenate((p[valid_int],q[valid_int]),axis=0))
-        ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
-
+        #ps.register_point_cloud('close edge-edge',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
+        #ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
 
 
     
@@ -1642,6 +1764,8 @@ class Cloth:
     def prepareCollisions(self,phi):
         phi_mat = phi.reshape((self.n_verts, 3), order='F') 
         self.updateClosePairs(phi_mat)
+        self.computeBarycentricEdges(phi_mat)
+        self.computeBarycentricFaces(phi_mat)
         #do costly indexing operations only once
         p0 = self.positions[self.e0[self.near_ee0]]
         p1 = self.positions[self.e1[self.near_ee0]]
@@ -1785,9 +1909,9 @@ class Cloth:
             lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
 
             #solver variables for inextensiblity 
-            n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_ee = 0
+            n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_ee = 0; self.error_nf = 0
 
-            while (error_str > self.tol or error_shr > self.tol or self.error_ee < -self.tol) and n_iter < 100: 
+            while (error_str > self.tol or error_shr > self.tol or self.error_nf < -np.inf or self.error_ee < -np.inf) and n_iter < 100: 
 
                 #shearing
                 phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
