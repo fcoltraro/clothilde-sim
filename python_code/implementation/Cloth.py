@@ -12,7 +12,7 @@ import polyscope as ps
 from line_profiler import profile
 
 class Cloth:
-    def __init__(self,verts,faces,seams=[],name="clothilde"):
+    def __init__(self,verts,quads,tris, seams=[],name="clothilde"):
         #positions and velocities
         self.positions = np.array(verts, order = 'F') #current position of the vertices of the mesh
         assert self.positions.shape[1] == 3 and self.positions.ndim == 2, 'Something is wrong with the vertices dimensions'
@@ -22,8 +22,10 @@ class Cloth:
         #self.positions += 0.0001*np.random.randn(self.positions.shape[0],3) #avoid singular flat case
 
         #topology of the mesh
-        self.faces = np.array(faces) #quadrangulation of the vertices in positions (index based)
-        assert self.faces.shape[1] == 4 and self.faces.ndim == 2, 'Current implementation only supports quad meshes'
+        self.quads = quads
+        self.faces = np.array(tris) #quadrangulation of the vertices in positions (index based)
+        assert self.faces.shape[1] == 3 and self.faces.ndim == 2, 'Current implementation only supports quad meshes'
+        self.triangles = tris
         self.edges = [] #list of unoriented edges in set form
         self.edges_matrix = np.zeros([0,2]) #edges in matrix form for efficient computations
         self.n_verts = self.positions.shape[0]
@@ -111,7 +113,7 @@ class Cloth:
         self.warning = False
 
     def __repr__(self):
-        return f"Cloth({self.n_verts} vertices, {self.faces.shape[0]} quads)"
+        return f"Cloth({self.n_verts} vertices, {self.faces.shape[0]} tris)"
     
     class ReferenceElement:
         def __init__(self, type):
@@ -155,11 +157,11 @@ class Cloth:
         self.buildShareNodeMatrix()
         #self.buildShareEdgeMatrix()
         self.computeBoundary()
-        self.triangulateQuadMesh()
+        #self.triangulateQuadMesh()
         self.prepareMatrices()
         self.computeStretchShear()
         self.precomputeBoundaryBending()
-        self.assembleQuadFlatnessK()
+        #self.assembleQuadFlatnessK()
 
     def checkQuadMesh(self):
         pass
@@ -232,13 +234,19 @@ class Cloth:
             self.A1 = sp.coo_matrix((data, (row, col)), shape=(self.n_faces, self.n_edges)).tocsr()
 
         if self.A2 is None:
-            row = np.array(range(self.n_faces)); row = np.concatenate((row, row, row, row))
-            col = np.concatenate((self.faces[:,0],self.faces[:,1],self.faces[:,2],self.faces[:,3]))
+            row = np.array(range(self.n_faces))
+            match self.faces.shape[1]:
+                case 3:
+                    row = np.concatenate((row, row, row))
+                    col = np.concatenate((self.faces[:,0],self.faces[:,1],self.faces[:,2]))
+                case 4:
+                    row = np.concatenate((row, row, row, row))
+                    col = np.concatenate((self.faces[:,0],self.faces[:,1],self.faces[:,2],self.faces[:,3]))
             data = np.ones_like(row)
             self.A2 = sp.coo_matrix((data, (row, col)), shape=(self.n_faces, self.n_verts)).tocsr()
             self.A2t = self.A2.T.tocsr()
             self.nodes_faces_count = np.array(self.A2.sum(axis=0))[0]
-            self.Am = sp.vstack([sp.eye(self.n_verts),0.25*self.A2]).tocsr() #for plotting
+            #self.Am = sp.vstack([sp.eye(self.n_verts),0.25*self.A2]).tocsr() #for plotting
 
     def computeBoundary(self):
         sumCols = np.array(self.A1.T.sum(axis=1))
@@ -485,7 +493,7 @@ class Cloth:
         neighs_xi = {i: set() for i in range(self.n_verts)}
         neighs_eta = {i: set() for i in range(self.n_verts)}
 
-        for face in self.faces:
+        for face in self.quads:
             #direction xi
             neighs_xi[face[0]].add(face[1])
             neighs_xi[face[1]].add(face[0])
@@ -511,9 +519,21 @@ class Cloth:
                 corners_shear.append([n] + list(neighs_xi[n]) + [n] + list(neighs_eta[n]))
                 self.corners.append(n)
 
-        bars = np.vstack([self.faces[:,[0,1]],self.faces[:,[1,2]],
-                          self.faces[:,[2,3]],self.faces[:,[3,0]]])
+        bars = np.vstack([self.quads[:,[0,1]],self.quads[:,[1,2]],
+                          self.quads[:,[2,3]],self.quads[:,[3,0]]])
         bars = np.unique(np.sort(bars, axis = 1),axis=0)
+
+        bars_t = np.vstack([self.faces[:,[0,1]],self.faces[:,[1,2]],self.faces[:,[2,0]]])
+        bars_t = np.unique(np.sort(bars_t, axis = 1),axis=0)
+
+        # Encode each edge (i, j) as a unique integer key
+        keys_bars = bars[:, 0] * self.n_verts + bars[:, 1]
+        keys_bars_t = bars_t[:, 0] * self.n_verts + bars_t[:, 1]
+
+        # Keep triangle edges that are not quad edges
+        mask_diag = ~np.isin(keys_bars_t, keys_bars)
+
+        diag_bars = bars_t[mask_diag]
 
         #remove constraints from the seams
         shear_neighs = np.array(neighs_shear)
@@ -523,6 +543,7 @@ class Cloth:
 
         #inititate the class    
         self.stretch = self.Stretch(bars, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
+        #self.shear = self.Stretch(diag_bars, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
         self.shear = self.Shear(shear_neighs, shear_corners, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
 
     class Stretch:
@@ -707,7 +728,7 @@ class Cloth:
         self.polyscoped = True
         ps.init()
         ps.remove_all_structures()
-        ps.register_surface_mesh(self.label, self.Am@self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
+        ps.register_surface_mesh(self.label, self.positions, self.triangles, smooth_shade=True, transparency=0.9, edge_width = 0)
         #ps.register_surface_mesh(self.label, self.positions, self.faces, smooth_shade=True, transparency=0.9)#, edge_width = 0)
         ps.register_curve_network(self.label,self.positions,self.edges_matrix,enabled=False)
         ps.set_up_dir("z_up")
@@ -719,7 +740,7 @@ class Cloth:
         if self.polyscoped is False:
             self.preparePolyscope()
         """Plot the current mesh"""
-        ps.get_surface_mesh(self.label).update_vertex_positions(self.Am@self.positions)
+        ps.get_surface_mesh(self.label).update_vertex_positions(self.positions)
         #ps.get_surface_mesh(self.label).update_vertex_positions(self.positions)
         ps.get_curve_network(self.label).update_node_positions(self.positions)
         if self.rad is not None:
@@ -736,10 +757,12 @@ class Cloth:
         def goThroughHistory():
             # Update Polyscope visualization
             phi_mat = self.history_pos[self.ps_frame]
+            """
             phi_all = self.Am@phi_mat
             for _ in range(smooth):
                 phi_all = self.S@phi_all
-            ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
+            """
+            ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
             ps.get_curve_network(self.label).update_node_positions(phi_mat)
 
             # Advance simulation time by skipping frames accordingly
@@ -750,10 +773,12 @@ class Cloth:
                 else:
                    #display last frame before stopping
                    phi_mat = self.history_pos[-1]
+                   """
                    phi_all = self.Am@phi_mat
                    for _ in range(smooth):
                        phi_all = self.S@phi_all
-                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_all)
+                   """
+                   ps.get_surface_mesh(self.label).update_vertex_positions(phi_mat)
                    ps.get_curve_network(self.label).update_node_positions(phi_mat)
                    ps.clear_user_callback()
 
@@ -796,9 +821,9 @@ class Cloth:
         longs = self.computeNorm(self.positions[e1]-self.positions[e0])
         min_l = np.min(longs); max_l = np.max(longs)
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
-        assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
+        #assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
         #take into account diagonals
-        d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
+        d0 = self.quads[:,0]; d1 = self.quads[:,1]; d2 = self.quads[:,2]; d3 = self.quads[:,3]; 
         diag0 = self.computeNorm(self.positions[d0]-self.positions[d2]); max0 = np.max(diag0)/2
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3]); max1 = np.max(diag1)/2
         #constant radious of the balls
@@ -862,7 +887,7 @@ class Cloth:
 
         #factorize implicit step matrix E for fast unconstrained step
         D = self.alpha*self.M + self.beta*self.K 
-        K = self.kappa*self.K + self.kappa_bnd*self.Kb + self.kappa_flt*self.Kflat; 
+        K = self.kappa*self.K + self.kappa_bnd*self.Kb; 
         M = self.rho*self.M; 
         E = M + self.dt*D + (self.dt**2)*K 
         Et = M + 0.5*self.dt*D + 0.25*(self.dt**2)*K 
@@ -1923,17 +1948,19 @@ class Cloth:
                 
                 
                 #self-collisions
-                phi = self.selfCollisions(phi,n_iter); 
+                #phi = self.selfCollisions(phi,n_iter); 
 
                 #iteration count 
                 n_iter += 1
 
                 #print('global edges error: ',self.error_ee)
 
-            print("global iters:",n_iter)
+            #print("global iters:",n_iter)
 
             if self.table is True:
                 phi = self.tableCollisions(phi)
+
+            """    
 
             inds_ee = np.nonzero(self.vals_ee < np.inf)[0]
             if inds_ee.shape[0] < 0:
@@ -1952,6 +1979,8 @@ class Cloth:
                 print(np.hstack([self.w0[inds_nf],self.w1[inds_nf],self.w2[inds_nf],self.w3[inds_nf]]))
                 print("error")
                 print(self.vals_nf[inds_nf])
+
+            """
                 
 
 

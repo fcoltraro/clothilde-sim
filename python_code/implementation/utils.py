@@ -18,12 +18,32 @@ def createMesh(interval, npx, npy, f1, f2, f3):
     nx = npx - 1
     ny = npy - 1
     T = np.zeros((nx * ny, 4), dtype=int)
-    for a in range(1, ny + 1):
-        for b in range(1, nx + 1):
-            ielem = (a - 1) * nx + b - 1
-            inode = (a - 1) * npx + b - 1
-            T[ielem, :] = [inode, inode + 1, inode + npx + 1, inode + npx]
-    return X, T
+    # Triangles: two per quad
+    Tri = np.zeros((2 * nx * ny, 3), dtype=int)
+    for a in range(ny):
+        for b in range(nx):
+            ielem = a * nx + b
+            inode = a * npx + b
+
+            v00 = inode              # bottom-left
+            v10 = inode + 1          # bottom-right
+            v11 = inode + npx + 1    # top-right
+            v01 = inode + npx        # top-left
+
+            T[ielem, :] = [v00, v10, v11, v01]
+
+            itri = 2 * ielem
+
+            if (a + b) % 2 == 0:
+                # diagonal v00 -- v11
+                Tri[itri,     :] = [v00, v10, v11]
+                Tri[itri + 1, :] = [v00, v11, v01]
+            else:
+                # diagonal v10 -- v01
+                Tri[itri,     :] = [v00, v10, v01]
+                Tri[itri + 1, :] = [v10, v11, v01]
+
+    return X, T, Tri
 
 def createRectangularMesh(a,b,na,nb,h = 0.5):
     #coordinate function for a flat cloth
@@ -36,8 +56,8 @@ def createRectangularMesh(a,b,na,nb,h = 0.5):
     #rectangle; a and b are the sides of the rectangle and na nb the number of nodes
     rect = [-a/2, a/2, -b/2, b/2]
     #create the mesh
-    X, T = createMesh(rect, na, nb, f1, f2, f3)   
-    return X, T  
+    X, Q, T = createMesh(rect, na, nb, f1, f2, f3)   
+    return X, Q, T 
 
 def quad_cylinder_mesh(R, H, h, f=1.0):
     """

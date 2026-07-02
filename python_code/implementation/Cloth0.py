@@ -1285,7 +1285,7 @@ class Cloth:
                 
                 
                 #self-collisions
-                phi = self.selfCollisions(phi,n_iter); 
+                #phi = self.selfCollisions(phi,n_iter); 
 
                 #iteration count 
                 n_iter += 1
