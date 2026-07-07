@@ -1,0 +1,701 @@
+[polyscope] Backend: openGL3_glfw -- Loaded openGL version: 3.3.0 NVIDIA 590.48.01
+Time: 9.631178140640259
+Average iterations 1.0623737373737374
+Wrote profile results to 'test1.py.lprof'
+Timer unit: 1e-06 s
+
+Total time: 5.9963 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.selfCollisions at line 1097
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1097                                               @profile
+  1098                                               def selfCollisions(self,phi,n_iter,s,max_iters=100):    
+  1099      4207        932.4      0.2      0.0          if n_iter == 0:
+  1100                                                       #precompute objects for selfcollisions
+  1101      3960    3219737.8    813.1     53.7              self.prepareCollisions(phi)   
+  1102                                           
+  1103                                           
+  1104                                                   #1) check for possible interior faces selfcollisions
+  1105      4207     124550.6     29.6      2.1          self.updateCollisionsFaces(phi)
+  1106                                           
+  1107      4207       1418.0      0.3      0.0          if self.error_nf < -self.tol: #correct detected self-collisions
+  1108                                                       #add new and previous selfcollisions
+  1109      2027       6294.3      3.1      0.1              ind_s = np.nonzero((self.vals_nf/(2*self.rad)) < self.tol)[0]
+  1110      2027       8350.6      4.1      0.1              self.ind_slf_nf = self.unionMask(self.ind_slf_nf,ind_s)
+  1111                                                       #correction for positions
+  1112      2027     622019.7    306.9     10.4              dlt_phi = self.solveFacesLCP(max_iters)
+  1113      2027       1534.8      0.8      0.0              phi += dlt_phi
+  1114                                           
+  1115                                                       #self.checkCollisionsFaces(phi)
+  1116                                                       
+  1117                                                       #apply friction if needed
+  1118      2027        542.8      0.3      0.0              if self.mu_self > 0 and n_iter < 5:
+  1119      2026      46201.6     22.8      0.8                  F_mu = self.computeFrictionCorrection(phi,dlt_phi)
+  1120      2026       1288.5      0.6      0.0                  phi += F_mu
+  1121                                                   #self.updateCollisionsFaces(phi)
+  1122                                           
+  1123                                                   #2) check for possible edges selfcollisions
+  1124      4207     356622.0     84.8      5.9          self.updateCollisionsEdges(phi)
+  1125                                           
+  1126      4207       1203.2      0.3      0.0          if self.error_ee < -self.tol: #correct detected self-collisions
+  1127                                                       #add new and previous selfcollisions
+  1128      2028      10533.3      5.2      0.2              ind_s = np.nonzero((self.vals_ee/(2*self.rad)) < self.tol)[0]
+  1129      2028       8497.1      4.2      0.1              self.ind_slf_ee = self.unionMask(self.ind_slf_ee,ind_s)
+  1130      2028     277788.0    137.0      4.6              self.cullRedundantEdgeConstraints(max_per_edge=3)
+  1131                                                       #correction for positions
+  1132      2028    1259707.3    621.2     21.0              dlt_phi = self.solveEdgesLCP(max_iters)
+  1133                                                       #dlt_phi = 0*phi
+  1134      2028       1540.2      0.8      0.0              phi += dlt_phi
+  1135                                           
+  1136                                                       #self.checkCollisionsEdges(phi)
+  1137                                                       
+  1138                                                       #apply friction if needed
+  1139      2028        497.8      0.2      0.0              if self.mu_self > 0 and n_iter < 5:
+  1140      2027      45217.8     22.3      0.8                  F_mu = self.computeFrictionCorrection(phi,dlt_phi)
+  1141      2027       1262.8      0.6      0.0                  phi += F_mu
+  1142                                                   #self.updateCollisionsEdges(phi)
+  1143                                                       
+  1144      4207        557.6      0.1      0.0          return phi
+
+Total time: 0.110889 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.updateCollisionsFaces at line 1146
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1146                                               @profile
+  1147                                               def updateCollisionsFaces(self,phi): 
+  1148      4207       2575.4      0.6      2.3          phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+  1149                                                   #assume we already have the baryentric coordinates
+  1150      4207       8428.1      2.0      7.6          p = phi_mat[self.near_nf0]
+  1151      4207       7844.7      1.9      7.1          q0 = phi_mat[self.f0[self.near_nf1]]
+  1152      4207       7617.6      1.8      6.9          q1 = phi_mat[self.f1[self.near_nf1]]
+  1153      4207       7659.0      1.8      6.9          q2 = phi_mat[self.f2[self.near_nf1]]
+  1154                                                   #closest points
+  1155      4207      14191.6      3.4     12.8          q = self.w0*q0 + self.w1*q1 + self.w2*q2 
+  1156                                           
+  1157                                                   #simplified CCD for the faces
+  1158      4207       1978.8      0.5      1.8          pq = q - p
+  1159                                                   #normal
+  1160      4207      14599.9      3.5     13.2          norm_pq = self.computeNorm(pq)
+  1161      4207       6007.4      1.4      5.4          normal_all = pq / norm_pq[:,np.newaxis]
+  1162                                                   #orient normal
+  1163      4207      13185.9      3.1     11.9          res0 = self.innerProduct(self.pq0_nf,normal_all); flip = (res0 < 0); 
+  1164      4207      10404.3      2.5      9.4          normal_all[flip] = -normal_all[flip]; norm_pq[flip] = -norm_pq[flip]             
+  1165                                                   #evaluate the constraints
+  1166      4207       3469.9      0.8      3.1          self.vals_nf = norm_pq - 2*self.rad
+  1167      4207        937.6      0.2      0.8          self.normals_nf = normal_all 
+  1168      4207       1340.3      0.3      1.2          if self.vals_nf.shape[0] > 0:
+  1169      2059      10282.2      5.0      9.3             self.error_nf = np.min(self.vals_nf/(2*self.rad))
+  1170                                                   else:
+  1171      2148        366.2      0.2      0.3             self.error_nf = 1
+
+Total time: 0.342213 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.updateCollisionsEdges at line 1190
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1190                                               @profile
+  1191                                               def updateCollisionsEdges(self,phi): 
+  1192      4207       1913.3      0.5      0.6          phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+  1193                                                   #assume we already have the baryentric coordinates
+  1194      4207      40172.2      9.5     11.7          p0 = phi_mat[self.e0[self.near_ee0]]
+  1195      4207      39290.9      9.3     11.5          p1 = phi_mat[self.e1[self.near_ee0]]
+  1196      4207      42387.1     10.1     12.4          q0 = phi_mat[self.e0[self.near_ee1]]
+  1197      4207      41825.8      9.9     12.2          q1 = phi_mat[self.e1[self.near_ee1]]
+  1198                                                   #closest points
+  1199      4207      36719.9      8.7     10.7          p = (1-self.ss)*p0 + self.ss*p1
+  1200      4207      34924.6      8.3     10.2          q = (1-self.tt)*q0 + self.tt*q1
+  1201                                           
+  1202                                                   #simplified CCD for the edges
+  1203      4207       3449.3      0.8      1.0          pq = q - p
+  1204                                                   #normal
+  1205      4207      31050.6      7.4      9.1          norm_pq = self.computeNorm(pq)
+  1206      4207      17521.0      4.2      5.1          normal_all = pq / norm_pq[:,np.newaxis]
+  1207                                                   #orient normal
+  1208      4207      27087.8      6.4      7.9          res0 = self.innerProduct(self.pq0_ee,normal_all); flip = (res0 < 0); 
+  1209      4207       9731.8      2.3      2.8          normal_all[flip] = -normal_all[flip]; norm_pq[flip] = -norm_pq[flip]             
+  1210                                                   #evaluate the constraints
+  1211      4207       3567.7      0.8      1.0          self.vals_ee = norm_pq - 2*self.rad
+  1212      4207        797.1      0.2      0.2          self.normals_ee = normal_all 
+  1213      4207       1091.5      0.3      0.3          if self.vals_ee.shape[0] > 0:
+  1214      2174      10356.0      4.8      3.0             self.error_ee = np.min(self.vals_ee/(2*self.rad))
+  1215                                                   else:
+  1216      2033        326.7      0.2      0.1             self.error_ee = 1
+
+Total time: 1.20721 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.solveEdgesLCP at line 1251
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1251                                               @profile
+  1252                                               def solveEdgesLCP(self, max_iter = 50):
+  1253                                                   #take only needed normals
+  1254      2028       4096.1      2.0      0.3          normals = self.normals_ee[self.ind_slf_ee]
+  1255                                                   #and barycentric coordinates
+  1256      2028       1087.5      0.5      0.1          aa = self.a_e[self.ind_slf_ee]
+  1257      2028        821.8      0.4      0.1          bb = self.b_e[self.ind_slf_ee]
+  1258      2028        754.0      0.4      0.1          cc = self.c_e[self.ind_slf_ee]
+  1259      2028        761.5      0.4      0.1          dd = self.d_e[self.ind_slf_ee]
+  1260                                                   #indices of involved nodes
+  1261      2028        716.1      0.4      0.1          e0_col = self.near_ee0[self.ind_slf_ee]
+  1262      2028        720.0      0.4      0.1          e1_col = self.near_ee1[self.ind_slf_ee]
+  1263      2028       1240.0      0.6      0.1          ind_p0 = self.e0[e0_col]; ind_p1 = self.e1[e0_col]
+  1264      2028       3500.7      1.7      0.3          ind_q0 = self.e0[e1_col]; ind_q1 = self.e1[e1_col]
+  1265      2028       2921.0      1.4      0.2          ind_all = np.concatenate([ind_p0,ind_p1,ind_q0,ind_q1])
+  1266                                               
+  1267                                                   #counts to take average impulses 
+  1268                                                   #count = np.bincount(ind_all, minlength=self.n_verts)
+  1269                                                   
+  1270      2028        280.0      0.1      0.0          eps_w = 1e-3
+  1271      2028       1204.8      0.6      0.1          count = np.zeros(self.n_verts)
+  1272      2028       5427.2      2.7      0.4          np.add.at(count, ind_p0[aa > eps_w], 1.0)
+  1273      2028       3822.7      1.9      0.3          np.add.at(count, ind_p1[bb > eps_w], 1.0)
+  1274      2028       3491.7      1.7      0.3          np.add.at(count, ind_q0[cc > eps_w], 1.0)
+  1275      2028       3363.5      1.7      0.3          np.add.at(count, ind_q1[dd > eps_w], 1.0)
+  1276                                                   
+  1277                                                   #averages
+  1278      2028       8336.3      4.1      0.7          avg = 1/(count + 1e-12); avg[count == 0] = 0; 
+  1279                                                   #mass inverses: set controled to zero
+  1280      2028       2825.0      1.4      0.2          w = self.m_inv.copy(); w[self.control] = 0
+  1281      2028       1641.6      0.8      0.1          wa  = (avg*w)[:,np.newaxis]      
+  1282                                           
+  1283                                                   #initial impulses
+  1284      2028       1635.9      0.8      0.1          num = -self.vals_ee[self.ind_slf_ee]; 
+  1285      2028       9741.1      4.8      0.8          den = (aa**2)*w[ind_p0] + (bb**2)*w[ind_p1] + (cc**2)*w[ind_q0] + (dd**2)*w[ind_q1] + self.slf
+  1286      2028       2410.3      1.2      0.2          landa = np.maximum(0,num/den)
+  1287                                           
+  1288                                                   #corrections
+  1289      2028       2785.5      1.4      0.2          dlt = landa[:,np.newaxis]*normals
+  1290      2028       3166.7      1.6      0.3          dlt_a = -aa[:,np.newaxis]*dlt
+  1291      2028       2906.1      1.4      0.2          dlt_b = -bb[:,np.newaxis]*dlt
+  1292      2028       3111.9      1.5      0.3          dlt_c = +cc[:,np.newaxis]*dlt
+  1293      2028       2975.4      1.5      0.2          dlt_d = +dd[:,np.newaxis]*dlt
+  1294      2028       3088.6      1.5      0.3          dlt_all = np.concatenate([dlt_a,dlt_b,dlt_c,dlt_d], axis = 0)
+  1295                                                   #global correction
+  1296      2028       1365.7      0.7      0.1          dlt_tot = np.zeros((self.n_verts,3))
+  1297      2028      25749.9     12.7      2.1          np.add.at(dlt_tot,ind_all,dlt_all); 
+  1298      2028       5378.1      2.7      0.4          dlt_phi = wa*dlt_tot
+  1299                                           
+  1300                                                   #iterative process
+  1301      2028        321.8      0.2      0.0          error_l = -1; ii = 0
+  1302     27355       5475.8      0.2      0.5          while error_l < -self.tol and ii < max_iter:  
+  1303     25327     277519.5     11.0     23.0              dlt_pq = - (aa[:,np.newaxis]*dlt_phi[ind_p0]) - (bb[:,np.newaxis]*dlt_phi[ind_p1]) + (cc[:,np.newaxis]*dlt_phi[ind_q0]) + (dd[:,np.newaxis]*dlt_phi[ind_q1])
+  1304                                                                 
+  1305     25327      70119.6      2.8      5.8              dlt_vals = -self.innerProduct(normals,dlt_pq)
+  1306                                                       #compute multipliers
+  1307     25327      28857.6      1.1      2.4              res = num + dlt_vals - self.slf*landa
+  1308     25327      87846.5      3.5      7.3              error_l = np.min(-res/(2*self.rad))
+  1309                                                       #print('error LCP: ',error_l)
+  1310     25327      30764.1      1.2      2.5              landa = np.maximum(0, landa + res/den)
+  1311                                                       #corrections
+  1312     25327      30546.4      1.2      2.5              dlt = landa[:,np.newaxis]*normals 
+  1313     25327      34874.0      1.4      2.9              dlt_a = -aa[:,np.newaxis]*dlt
+  1314     25327      34504.9      1.4      2.9              dlt_b = -bb[:,np.newaxis]*dlt
+  1315     25327      34924.9      1.4      2.9              dlt_c = +cc[:,np.newaxis]*dlt
+  1316     25327      34178.8      1.3      2.8              dlt_d = +dd[:,np.newaxis]*dlt
+  1317     25327      31733.3      1.3      2.6              dlt_all = np.concatenate([dlt_a,dlt_b,dlt_c,dlt_d], axis = 0)
+  1318                                                       #global correction
+  1319     25327      14183.1      0.6      1.2              dlt_tot.fill(0.0)
+  1320     25327     310679.0     12.3     25.7              np.add.at(dlt_tot,ind_all,dlt_all);         
+  1321     25327      62993.1      2.5      5.2              dlt_phi = wa*dlt_tot
+  1322     25327       4017.1      0.2      0.3              ii += 1
+  1323                                                   #print('iterations LCP: ',ii)
+  1324      2028       2346.0      1.2      0.2          return dlt_phi.flatten(order='F')
+
+Total time: 0.585506 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.solveFacesLCP at line 1326
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1326                                               @profile
+  1327                                               def solveFacesLCP(self, max_iter = 50):
+  1328                                                   #take only needed normals
+  1329      2027       2569.0      1.3      0.4          normals = self.normals_nf[self.ind_slf_nf]
+  1330                                                   #and barycentric coordinates
+  1331      2027       1793.4      0.9      0.3          w0 = self.w0[self.ind_slf_nf]
+  1332      2027       1385.4      0.7      0.2          w1 = self.w1[self.ind_slf_nf]
+  1333      2027       1308.6      0.6      0.2          w2 = self.w2[self.ind_slf_nf]
+  1334                                                   #indices of involved nodes
+  1335      2027        720.4      0.4      0.1          ind_p = self.near_nf0[self.ind_slf_nf]
+  1336      2027        575.2      0.3      0.1          f_col = self.near_nf1[self.ind_slf_nf]
+  1337      2027       1129.7      0.6      0.2          ind_q0 = self.f0[f_col]; ind_q1 = self.f1[f_col]; ind_q2 = self.f2[f_col]; 
+  1338      2027       3162.0      1.6      0.5          ind_all = np.concatenate([ind_p,ind_q0,ind_q1,ind_q2])
+  1339                                               
+  1340                                                   #counts to take average impulses 
+  1341      2027       2675.5      1.3      0.5          count = np.bincount(ind_all, minlength=self.n_verts)
+  1342                                                   
+  1343                                                   #averages
+  1344      2027      10224.3      5.0      1.7          avg = 1/(count + 1e-12); avg[count == 0] = 0; 
+  1345                                                   #mass inverses: set controled to zero
+  1346      2027       3259.4      1.6      0.6          w = self.m_inv.copy(); w[self.control] = 0
+  1347      2027       1761.0      0.9      0.3          wa  = (avg*w)[:,np.newaxis]      
+  1348                                           
+  1349                                                   #initial impulses
+  1350      2027       1367.4      0.7      0.2          num = -self.vals_nf[self.ind_slf_nf]; 
+  1351      2027       9599.8      4.7      1.6          den = w[ind_p] + (w0[:, 0]**2)*w[ind_q0] + (w1[:, 0]**2)*w[ind_q1] + (w2[:, 0]**2)*w[ind_q2] + self.slf
+  1352      2027       2208.6      1.1      0.4          landa = np.maximum(0,num/den)
+  1353                                           
+  1354                                                   #corrections
+  1355      2027       2381.2      1.2      0.4          dlt = landa[:,np.newaxis]*normals
+  1356      2027       2428.7      1.2      0.4          dlt0 = +w0*dlt
+  1357      2027       2075.2      1.0      0.4          dlt1 = +w1*dlt
+  1358      2027       2030.6      1.0      0.3          dlt2 = +w2*dlt
+  1359      2027       4079.4      2.0      0.7          dlt_all = np.concatenate([-dlt,dlt0,dlt1,dlt2], axis = 0)
+  1360                                                   #global correction
+  1361      2027       1677.2      0.8      0.3          dlt_tot = np.zeros((self.n_verts,3))
+  1362      2027      10892.7      5.4      1.9          np.add.at(dlt_tot,ind_all,dlt_all); 
+  1363      2027       5502.3      2.7      0.9          dlt_phi = wa*dlt_tot
+  1364                                           
+  1365                                                   #iterative process
+  1366      2027        289.7      0.1      0.0          error_l = -1; ii = 0
+  1367     19988       4371.4      0.2      0.7          while error_l < -self.tol and ii < max_iter:  
+  1368     17961     118217.5      6.6     20.2              dlt_pq =  (w0*dlt_phi[ind_q0]) + (w1*dlt_phi[ind_q1]) + (w2*dlt_phi[ind_q2]) - dlt_phi[ind_p]
+  1369                                                                 
+  1370     17961      43807.7      2.4      7.5              dlt_vals = -self.innerProduct(normals,dlt_pq)
+  1371                                                       #compute multipliers
+  1372     17961      18637.1      1.0      3.2              res = num + dlt_vals - self.slf*landa
+  1373     17961      61153.8      3.4     10.4              error_l = np.min(-res/(2*self.rad))
+  1374                                                       #print('error LCP: ',error_l)
+  1375     17961      19445.3      1.1      3.3              landa = np.maximum(0, landa + res/den)
+  1376                                                       #corrections
+  1377     17961      17921.3      1.0      3.1              dlt = landa[:,np.newaxis]*normals
+  1378     17961      18367.7      1.0      3.1              dlt0 = +w0*dlt
+  1379     17961      17804.0      1.0      3.0              dlt1 = +w1*dlt
+  1380     17961      17854.9      1.0      3.0              dlt2 = +w2*dlt
+  1381     17961      25389.8      1.4      4.3              dlt_all = np.concatenate([-dlt,dlt0,dlt1,dlt2], axis = 0)
+  1382                                                       #global correction
+  1383     17961      10411.3      0.6      1.8              dlt_tot.fill(0.0)
+  1384     17961      86255.6      4.8     14.7              np.add.at(dlt_tot,ind_all,dlt_all); 
+  1385     17961      45204.7      2.5      7.7              dlt_phi = wa*dlt_tot
+  1386     17961       2838.9      0.2      0.5              ii += 1
+  1387                                                   #print('iterations LCP: ',ii)
+  1388      2027       2728.2      1.3      0.5          return dlt_phi.flatten(order='F')
+
+Total time: 0 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.computeClosePairs2 at line 1504
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1504                                               @profile
+  1505                                               def computeClosePairs2(self, phi_mat):
+  1506                                                   # -------------------------
+  1507                                                   # edge-edge broad phase
+  1508                                                   # -------------------------
+  1509                                                   phi_e = 0.5 * (phi_mat[self.e0] + phi_mat[self.e1])
+  1510                                                   tree_e = cKDTree(phi_e)
+  1511                                           
+  1512                                                   pairs = tree_e.query_pairs(self.eps_ee, output_type="ndarray")
+  1513                                           
+  1514                                                   if pairs.shape[0] > 0:
+  1515                                                       ei = pairs[:, 0]
+  1516                                                       ej = pairs[:, 1]
+  1517                                           
+  1518                                                       mask = ~self.share_node[ei, ej]
+  1519                                                       ei = ei[mask]
+  1520                                                       ej = ej[mask]
+  1521                                                   else:
+  1522                                                       ei = np.empty(0, dtype=np.int64)
+  1523                                                       ej = np.empty(0, dtype=np.int64)
+  1524                                           
+  1525                                                   self.near_ee0 = ei
+  1526                                                   self.near_ee1 = ej
+  1527                                           
+  1528                                                   # -------------------------
+  1529                                                   # node-face broad phase
+  1530                                                   # -------------------------
+  1531                                                   phi_f = (phi_mat[self.f0] + phi_mat[self.f1] + phi_mat[self.f2]) / 3.0
+  1532                                                   self.mid_faces = phi_f
+  1533                                           
+  1534                                                   tree_n = cKDTree(phi_mat)
+  1535                                           
+  1536                                                   neigh_lists = tree_n.query_ball_point(phi_f, r=self.eps_nf)
+  1537                                                   counts = np.fromiter((len(x) for x in neigh_lists), dtype=np.int64)
+  1538                                           
+  1539                                                   if counts.sum() > 0:
+  1540                                                       fi = np.repeat(np.arange(phi_f.shape[0]), counts)
+  1541                                                       nj = np.concatenate(neigh_lists).astype(np.int64)
+  1542                                           
+  1543                                                       mask = ~self.node_in_face[fi, nj]
+  1544                                                       fi = fi[mask]
+  1545                                                       nj = nj[mask]
+  1546                                                   else:
+  1547                                                       fi = np.empty(0, dtype=np.int64)
+  1548                                                       nj = np.empty(0, dtype=np.int64)
+  1549                                           
+  1550                                                   self.near_nf0 = nj
+  1551                                                   self.near_nf1 = fi
+  1552                                           
+  1553                                                   self.mask_col = np.zeros(
+  1554                                                       max(ei.shape[0], nj.shape[0]),
+  1555                                                       dtype=bool
+  1556                                                   )
+
+Total time: 1.24629 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.computeClosePairs at line 1558
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1558                                               @profile
+  1559                                               def computeClosePairs(self,phi_mat):
+  1560                                                   #build the tree only for the edges
+  1561       448      14231.7     31.8      1.1          phi_e = 0.5*(phi_mat[self.e0]+phi_mat[self.e1])
+  1562       448      40691.1     90.8      3.3          tree_e = KDTree(phi_e)
+  1563                                           
+  1564                                                   #node-node close pairs
+  1565       448     695943.5   1553.4     55.8          dists, neighs = tree_e.query(phi_e, k=self.ke+1) #query it for k nodes neighbors
+  1566                                                   #reshape removing the first pair
+  1567       448       3894.5      8.7      0.3          dist = dists[:,1:].reshape(-1)
+  1568       448       3212.1      7.2      0.3          ej = neighs[:,1:].reshape(-1)
+  1569                                                   #remove far away pairs and duplicates
+  1570       448       6597.2     14.7      0.5          mask = (dist < self.eps_ee) & (self.ei < ej)
+  1571       448      56650.8    126.5      4.5          ei = self.ei[mask]; ej = ej[mask]
+  1572                                                   #second mask
+  1573       448      23902.6     53.4      1.9          mask2 = ~self.share_node[ei,ej]
+  1574       448      27225.4     60.8      2.2          ei = ei[mask2]; ej = ej[mask2]
+  1575                                                   #potential colliding nodes-nodes
+  1576       448        200.1      0.4      0.0          self.near_ee0 = ei; self.near_ee1 = ej
+  1577                                           
+  1578                                                   #build the tree only for the faces
+  1579       448       7919.7     17.7      0.6          tree_n = KDTree(phi_mat)
+  1580                                           
+  1581                                                   #node-face close pairs
+  1582       448      15033.5     33.6      1.2          phi_f = (phi_mat[self.f0] + phi_mat[self.f1] + phi_mat[self.f2])/3
+  1583       448        134.5      0.3      0.0          self.mid_faces = phi_f
+  1584       448     329416.5    735.3     26.4          dists, neighs = tree_n.query(phi_f, k=self.kf) #query it for k nodes neighbors
+  1585                                                   #reshape 
+  1586       448        231.4      0.5      0.0          dist = dists.reshape(-1)
+  1587       448        134.8      0.3      0.0          nj = neighs.reshape(-1)
+  1588                                                   #remove far away pairs and duplicates
+  1589       448        833.5      1.9      0.1          mask = (dist < self.eps_nf) 
+  1590       448       8256.8     18.4      0.7          fi = self.fi[mask]; nj = nj[mask]
+  1591                                                   #second mask
+  1592       448       8153.2     18.2      0.7          mask2 = ~self.node_in_face[fi,nj]
+  1593       448       2287.2      5.1      0.2          fi = fi[mask2]; nj = nj[mask2]
+  1594                                                   #potential colliding nodes-faces
+  1595       448        145.9      0.3      0.0          self.near_nf0 = nj; self.near_nf1 = fi
+  1596                                           
+  1597                                           
+  1598                                                   #mask for indices
+  1599       448       1196.8      2.7      0.1          self.mask_col = np.zeros(np.maximum(ei.shape[0],nj.shape[0]), dtype=bool)
+
+Total time: 1.31506 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.updateClosePairs at line 1601
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1601                                               @profile
+  1602                                               def updateClosePairs(self,phi_mat):
+  1603      3960        545.6      0.1      0.0          updated = False
+  1604                                                   #check close pairs
+  1605      3960      13118.8      3.3      1.0          diff = phi_mat - self.last_check
+  1606      3960      41594.5     10.5      3.2          mov = np.sqrt(np.max(self.innerProduct(diff, diff)/self.den_last))
+  1607      3960       1814.9      0.5      0.1          if (mov > self.mov_tol) or (self.total_iters == 0) or self.update_chol: #only check when at least 1 node has moved more than mov_eps
+  1608       448    1253039.8   2797.0     95.3              self.computeClosePairs(phi_mat) #update close pairs
+  1609       448       1810.1      4.0      0.1              self.last_check = phi_mat.copy() #update last checked mesh
+  1610       448       3066.0      6.8      0.2              self.den_last = self.innerProduct(self.last_check,self.last_check)
+  1611       448         71.9      0.2      0.0              updated = True          
+  1612                                                       #print("Close node-face")
+  1613                                                       #print(np.vstack([self.near_nf0,self.near_nf1]).T)
+
+Total time: 0.224783 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.computeBarycentricFaces at line 1615
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1615                                               @profile
+  1616                                               def computeBarycentricFaces(self, phi_mat):
+  1617                                                   #fancy indexing (precompute interior)
+  1618      3960      10773.4      2.7      4.8          p = phi_mat[self.near_nf0]
+  1619      3960       8378.2      2.1      3.7          q0 = phi_mat[self.f0[self.near_nf1]]
+  1620      3960       7715.6      1.9      3.4          q1 = phi_mat[self.f1[self.near_nf1]]
+  1621      3960       7735.1      2.0      3.4          q2 = phi_mat[self.f2[self.near_nf1]]
+  1622                                           
+  1623                                           
+  1624                                                   # ------------------------------------------------------------
+  1625                                                   # Interior candidate:
+  1626                                                   #
+  1627                                                   #     p-q0 = alpha*(q1-q0) + beta*(q2-q0)
+  1628                                                   # ------------------------------------------------------------
+  1629                                           
+  1630      3960     109631.4     27.7     48.8          alpha, beta, nonsing, _, _ = self.projectVectorInPlane(p - q0, q1-q0, q2-q0)
+  1631      3960       3783.3      1.0      1.7          gamma = 1 - alpha - beta
+  1632      3960       1721.5      0.4      0.8          self.w1 = alpha[:,np.newaxis]
+  1633      3960       1195.1      0.3      0.5          self.w2 = beta[:,np.newaxis]
+  1634      3960       1072.1      0.3      0.5          self.w0 = gamma[:,np.newaxis]
+  1635                                           
+  1636      3960      14730.9      3.7      6.6          q = self.w0*q0 + self.w1*q1 + self.w2*q2
+  1637                                           
+  1638      3960      14170.7      3.6      6.3          norm_pq = self.computeNorm(q-p)
+  1639                                           
+  1640      3960        488.4      0.1      0.2          valid = (
+  1641     27720      13019.7      0.5      5.8              nonsing & (norm_pq < 4.5*self.rad)
+  1642      7920       4954.8      0.6      2.2              & (alpha > 0) & (alpha < 1)
+  1643      7920       4240.2      0.5      1.9              & (beta > 0) & (beta < 1)
+  1644      7920       4258.9      0.5      1.9              & (gamma > 0) & (gamma < 1)
+  1645                                                   )
+  1646                                           
+  1647                                           
+  1648                                                   #update arrays
+  1649      3960       2165.6      0.5      1.0          self.near_nf0 = self.near_nf0[valid]
+  1650      3960       1951.6      0.5      0.9          self.near_nf1 = self.near_nf1[valid]
+  1651      3960       4693.7      1.2      2.1          self.w0 = self.w0[valid]
+  1652      3960       4043.0      1.0      1.8          self.w1 = self.w1[valid]
+  1653      3960       4059.8      1.0      1.8          self.w2 = self.w2[valid]
+  1654                                           
+  1655                                                   #ps.register_point_cloud('close node-face',np.concatenate((p[valid],q[valid]),axis=0))
+  1656                                                   #ps.get_point_cloud('close node-face').set_radius(rad=self.rad,relative=False)
+
+Total time: 1.32683 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.computeBarycentricEdges at line 1659
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1659                                               @profile
+  1660                                               def computeBarycentricEdges(self, phi_mat):
+  1661                                                   #fancy indexing (precompute interior)
+  1662      3960      47384.4     12.0      3.6          p0 = phi_mat[self.e0[self.near_ee0]]
+  1663      3960      45982.1     11.6      3.5          p1 = phi_mat[self.e1[self.near_ee0]]
+  1664      3960      50697.2     12.8      3.8          q0 = phi_mat[self.e0[self.near_ee1]]
+  1665      3960      48739.1     12.3      3.7          q1 = phi_mat[self.e1[self.near_ee1]]
+  1666                                                   #direction vectors
+  1667      3960       8960.0      2.3      0.7          dp = p1 - p0; dq = q1 - q0
+  1668                                           
+  1669                                                   # ------------------------------------------------------------
+  1670                                                   # Interior line-line candidate:
+  1671                                                   #
+  1672                                                   #     q0 - p0 = u dp - v dq
+  1673                                                   # ------------------------------------------------------------
+  1674                                           
+  1675      3960     240521.2     60.7     18.1          u_int, v_int, nonsing, dp2, dq2 = self.projectVectorInPlane(q0 - p0, dp, -dq)
+  1676                                           
+  1677      3960        561.1      0.1      0.0          valid_int = (
+  1678     19800       8142.2      0.4      0.6              nonsing
+  1679      7920       5813.5      0.7      0.4              & (u_int >= 0.0) & (u_int <= 1.0)
+  1680      7920       4462.6      0.6      0.3              & (v_int >= 0.0) & (v_int <= 1.0)
+  1681                                                   )
+  1682                                           
+  1683      3960       2341.4      0.6      0.2          u = u_int.copy()
+  1684      3960       1725.8      0.4      0.1          v = v_int.copy()
+  1685                                           
+  1686                                                   # ------------------------------------------------------------
+  1687                                                   # Only non-interior / singular cases need boundary tests.
+  1688                                                   # ------------------------------------------------------------
+  1689                                           
+  1690      3960       1891.9      0.5      0.1          bad = ~valid_int
+  1691                                           
+  1692      3960      17750.5      4.5      1.3          if np.any(bad):
+  1693                                                       #only do all these computations for non-interior ones
+  1694      2187      87859.9     40.2      6.6              p0b = p0[bad]; p1b = p1[bad]
+  1695      2187      69944.1     32.0      5.3              q0b = q0[bad]; q1b = q1[bad]
+  1696                                           
+  1697      2187      68558.3     31.3      5.2              dpb = dp[bad]; dqb = dq[bad]
+  1698      2187      29686.4     13.6      2.2              dp2b = dp2[bad]; dq2b = dq2[bad]
+  1699                                           
+  1700      2187        684.9      0.3      0.1              nb = p0b.shape[0]
+  1701                                           
+  1702                                                       # p0 against q0-q1
+  1703      4374      71689.9     16.4      5.4              v_p0, d2_p0 = self.closestPointNodeEdge(
+  1704      2187        270.3      0.1      0.0                  p0b, q0b, dqb, dq2b
+  1705                                                       )
+  1706      2187       1371.4      0.6      0.1              u_p0 = np.zeros(nb)
+  1707                                           
+  1708                                                       # p1 against q0-q1
+  1709      4374      65624.8     15.0      4.9              v_p1, d2_p1 = self.closestPointNodeEdge(
+  1710      2187        237.2      0.1      0.0                  p1b, q0b, dqb, dq2b
+  1711                                                       )
+  1712      2187       5152.0      2.4      0.4              u_p1 = np.ones(nb)
+  1713                                           
+  1714                                                       # q0 against p0-p1
+  1715      4374      64316.8     14.7      4.8              u_q0, d2_q0 = self.closestPointNodeEdge(
+  1716      2187        223.2      0.1      0.0                  q0b, p0b, dpb, dp2b
+  1717                                                       )
+  1718      2187        992.9      0.5      0.1              v_q0 = np.zeros(nb)
+  1719                                           
+  1720                                                       # q1 against p0-p1
+  1721      4374      64624.9     14.8      4.9              u_q1, d2_q1 = self.closestPointNodeEdge(
+  1722      2187        218.0      0.1      0.0                  q1b, p0b, dpb, dp2b
+  1723                                                       )
+  1724      2187       3838.6      1.8      0.3              v_q1 = np.ones(nb)
+  1725                                           
+  1726      2187      23146.8     10.6      1.7              u_all = np.stack([u_p0, u_p1, u_q0, u_q1], axis=1)
+  1727      2187      15801.0      7.2      1.2              v_all = np.stack([v_p0, v_p1, v_q0, v_q1], axis=1)
+  1728                                           
+  1729      2187      14792.3      6.8      1.1              d2_all = np.stack([d2_p0, d2_p1, d2_q0, d2_q1], axis=1)
+  1730                                           
+  1731      2187      47075.4     21.5      3.5              ind = np.argmin(d2_all, axis=1)
+  1732      2187       3135.7      1.4      0.2              rows = np.arange(nb)
+  1733                                           
+  1734      2187      30878.8     14.1      2.3              u[bad] = u_all[rows, ind]
+  1735      2187      20111.2      9.2      1.5              v[bad] = v_all[rows, ind]
+  1736                                           
+  1737      3960       2050.9      0.5      0.2          self.ss = u[:,np.newaxis]
+  1738      3960       1450.8      0.4      0.1          self.tt = v[:,np.newaxis]
+  1739      3960       4493.1      1.1      0.3          self.a_e = 1-u
+  1740      3960        839.0      0.2      0.1          self.b_e = u
+  1741      3960       3436.2      0.9      0.3          self.c_e = 1-v
+  1742      3960        835.9      0.2      0.1          self.d_e = v 
+  1743                                                   #TODO: only do this for interior ones and reuse computed distances
+  1744      3960      23040.8      5.8      1.7          p = p0 + self.ss * dp
+  1745      3960      22514.3      5.7      1.7          q = q0 + self.tt * dq
+  1746      3960      40582.6     10.2      3.1          norm_pq = self.computeNorm(q-p)
+  1747      3960       3797.1      1.0      0.3          inds_cls = (norm_pq < 4.5*self.rad)
+  1748                                           
+  1749                                                   #update arrays
+  1750      3960       4817.2      1.2      0.4          self.near_ee0 = self.near_ee0[inds_cls]
+  1751      3960       4201.9      1.1      0.3          self.near_ee1 = self.near_ee1[inds_cls]
+  1752      3960      13748.3      3.5      1.0          self.ss = self.ss[inds_cls]
+  1753      3960      11201.5      2.8      0.8          self.tt = self.tt[inds_cls]
+  1754      3960       4280.7      1.1      0.3          self.a_e = self.a_e[inds_cls]
+  1755      3960       3323.1      0.8      0.3          self.b_e = self.b_e[inds_cls]
+  1756      3960       3631.5      0.9      0.3          self.c_e = self.c_e[inds_cls]
+  1757      3960       3378.7      0.9      0.3          self.d_e = self.d_e[inds_cls]
+  1758                                           
+  1759                                                   #ps.register_point_cloud('close edge-edge',np.concatenate((p[inds_cls],q[inds_cls]),axis=0))
+  1760                                                   #ps.get_point_cloud('close edge-edge').set_radius(rad=self.rad,relative=False)
+
+Total time: 3.20517 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.prepareCollisions at line 1836
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1836                                               @profile
+  1837                                               def prepareCollisions(self,phi):
+  1838      3960       1889.0      0.5      0.1          phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+  1839      3960    1323528.4    334.2     41.3          self.updateClosePairs(phi_mat)
+  1840      3960    1361065.2    343.7     42.5          self.computeBarycentricEdges(phi_mat)
+  1841      3960     244301.4     61.7      7.6          self.computeBarycentricFaces(phi_mat)
+  1842                                                   #do costly indexing operations only once
+  1843      3960      38113.5      9.6      1.2          p0 = self.positions[self.e0[self.near_ee0]]
+  1844      3960      36958.6      9.3      1.2          p1 = self.positions[self.e1[self.near_ee0]]
+  1845      3960      40107.7     10.1      1.3          q0 = self.positions[self.e0[self.near_ee1]]
+  1846      3960      39284.4      9.9      1.2          q1 = self.positions[self.e1[self.near_ee1]]
+  1847                                                   #closest points
+  1848      3960      34775.6      8.8      1.1          p = (1-self.ss)*p0 + self.ss*p1
+  1849      3960      33151.0      8.4      1.0          q = (1-self.tt)*q0 + self.tt*q1
+  1850      3960       3740.8      0.9      0.1          self.pq0_ee = q - p
+  1851                                                   #now for the other case
+  1852      3960       7659.0      1.9      0.2          p = self.positions[self.near_nf0]
+  1853      3960       7521.9      1.9      0.2          q0 = self.positions[self.f0[self.near_nf1]]
+  1854      3960       7304.0      1.8      0.2          q1 = self.positions[self.f1[self.near_nf1]]
+  1855      3960       7331.0      1.9      0.2          q2 = self.positions[self.f2[self.near_nf1]]
+  1856                                                   #closest points
+  1857      3960      13635.4      3.4      0.4          q = self.w0*q0 + self.w1*q1 + self.w2*q2 
+  1858      3960       2174.9      0.5      0.1          self.pq0_nf = q - p
+  1859                                                   #store past collisions
+  1860      3960        913.2      0.2      0.0          self.ind_slf_ee = self.empty
+  1861      3960        988.6      0.2      0.0          self.ind_slf_nf = self.empty
+  1862                                                   #store if floor collisions have happened
+  1863      3960        722.4      0.2      0.0          self.flr = True
+
+Total time: 9.61753 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.simulate at line 1957
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1957                                               @profile
+  1958                                               def simulate(self, u, control):
+  1959                                           
+  1960                                                   #process the control inputs
+  1961       360       5699.9     15.8      0.1          U = self.processControlInputs(u,control)
+  1962                                           
+  1963                                                   #substepping
+  1964       360         44.8      0.1      0.0          n_iter_sub = 0
+  1965      4320        810.8      0.2      0.0          for s in range(self.sub_steps):
+  1966                                           
+  1967                                                       #current position of the cloth 
+  1968      3960       2793.1      0.7      0.0              phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
+  1969                                           
+  1970                                                       #interpolated control
+  1971      3960        758.4      0.2      0.0              u_raw = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+  1972      3960      36046.2      9.1      0.4              u = self.limitControlVelocity(u_raw)
+  1973                                           
+  1974                                                       #unconstrained step to correct
+  1975      3960     512468.6    129.4      5.3              phi = self.unconstrainedStep(self.implicitEuler)
+  1976                                           
+  1977                                                       #lagrange multipliers for the shear and stretch constraints
+  1978      3960       4926.0      1.2      0.1              lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
+  1979      3960       2957.7      0.7      0.0              lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
+  1980                                           
+  1981                                                       #solver variables for inextensiblity 
+  1982      3960       2008.4      0.5      0.0              n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_ee = 0; self.error_nf = 0
+  1983                                           
+  1984      8167       3682.3      0.5      0.0              while (error_str > self.tol or error_shr > self.tol or self.error_nf < -np.inf or self.error_ee < -np.inf) and n_iter < 100: 
+  1985                                           
+  1986                                                           #shearing
+  1987      8414     886141.4    105.3      9.2                  phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
+  1988      4207        939.6      0.2      0.0                                                                      lambda_shr,self.shr,0.005,s%5)
+  1989                                           
+  1990                                                           #stretching
+  1991      8414    1747098.1    207.6     18.2                  phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
+  1992      4207        782.3      0.2      0.0                                                                      lambda_str,self.str,0,0)   
+  1993                                                           
+  1994                                                           
+  1995                                                           #self-collisions
+  1996      4207    6011611.5   1429.0     62.5                  phi = self.selfCollisions(phi,n_iter,s); 
+  1997                                           
+  1998                                                           #iteration count 
+  1999      4207        746.3      0.2      0.0                  n_iter += 1
+  2000                                           
+  2001                                                           #print('global edges error: ',self.error_ee)
+  2002                                           
+  2003                                                       #print("global iters:",n_iter)
+  2004                                           
+  2005      3960        743.3      0.2      0.0              if self.table is True:
+  2006      3960     327799.2     82.8      3.4                  phi = self.tableCollisions(phi)
+  2007                                           
+  2008      3960        479.6      0.1      0.0              """    
+  2009                                           
+  2010                                                       inds_ee = np.nonzero(self.vals_ee < np.inf)[0]
+  2011                                                       if inds_ee.shape[0] < 0:
+  2012                                                           print("Close edge-edge")
+  2013                                                           print(np.vstack([self.near_ee0[inds_ee],self.near_ee1[inds_ee]]).T)
+  2014                                                           print("Barycentric")
+  2015                                                           print(np.hstack([self.ss[inds_ee],self.tt[inds_ee]]))
+  2016                                                           print("error")
+  2017                                                           print(self.vals_ee[inds_ee])
+  2018                                                       
+  2019                                                       inds_nf = np.nonzero(self.vals_nf < np.inf)[0]
+  2020                                                       if inds_nf.shape[0] < 0:
+  2021                                                           print("Close node-face")
+  2022                                                           print(np.vstack([self.near_nf0[inds_nf],self.near_nf1[inds_nf]]).T)
+  2023                                                           print("Barycentric")
+  2024                                                           print(np.hstack([self.w0[inds_nf],self.w1[inds_nf],self.w2[inds_nf]]))
+  2025                                                           print("error")
+  2026                                                           print(self.vals_nf[inds_nf])
+  2027                                                       """
+  2028                                                       
+  2029                                                           
+  2030                                           
+  2031                                           
+  2032                                                       #floor collisions
+  2033      3960      55767.1     14.1      0.6              phi = self.floorCollisions(phi)
+  2034                                           
+  2035                                                       #update internal cloth variables
+  2036      3960       7343.1      1.9      0.1              dphi = (phi-phi0)/self.dt
+  2037      3960       2086.5      0.5      0.0              self.positions = phi.reshape((self.n_verts, 3), order='F')
+  2038      3960       2200.6      0.6      0.0              self.velocities = dphi.reshape((self.n_verts, 3), order='F')
+  2039      3960        960.3      0.2      0.0              n_iter_sub += n_iter
+  2040                                           
+  2041                                                   #save final positions and velocities
+  2042       360        135.9      0.4      0.0          self.history_pos.append(self.positions)
+  2043       360         64.7      0.2      0.0          self.history_vel.append(self.velocities)
+  2044       360        164.7      0.5      0.0          self.total_iters += n_iter_sub/self.sub_steps
+  2045                                           
+  2046                                                   #warnings
+  2047       360        266.7      0.7      0.0          if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
+  2048                                                      print("WARNING: average of more than 4 iterations taken, for better performance reduce dt or increase thck")
+  2049                                                      self.warning = True
+

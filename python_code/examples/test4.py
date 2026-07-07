@@ -8,15 +8,15 @@ import numpy as np
 import time
 
 # Caida libre
-na = 20; nb = 20
+na = 15; nb = 15
 m = np.int32(np.floor(na/2))
 np.random.seed(1)
-X, T = createRectangularMesh(a = 0.6, b = 0.6, na = na, nb = nb, h = 0.1)
+X, Q, T = createRectangularMesh(a = 0.6, b = 0.6, na = na, nb = nb, h = 0.1)
 X[:,2] += 0.4; 
 
 X += 0.0002*np.random.randn(X.shape[0],3) 
 
-self = Cloth(X, T); 
+self = Cloth(X,Q,T); 
 dt = 1/600
 self.setSimulatorParameters(dt=dt,tol=0.005, 
                             rho=0.1,delta=0.1,kappa=0.25*1e-4,shr=0.5*1e-4, kappa_bnd = 0.025*1e-4,
@@ -24,12 +24,12 @@ self.setSimulatorParameters(dt=dt,tol=0.005,
 tf = int(1.5/dt)
 print(tf)
 self.plotMesh()
-inds = [m-1, nb*na - m-1]
+inds = [m, nb*na - m-1]
 u = self.positions[inds]
 start_time = time.time()
 for i in range(tf):
     print("Iteration: ",i)
-    if i == -int(tf/2):
+    if i == -int(280):
         inds = [0]
         u = self.positions[inds]
     self.simulate(u = u, control = inds)

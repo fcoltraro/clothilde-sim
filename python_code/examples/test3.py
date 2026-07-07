@@ -9,18 +9,18 @@ import numpy as np
 import time
 
 # Caida libre
-n = 30; na = n; nb = n
+n = 25; na = n; nb = n
 m = np.int32(np.floor(n/2))
 np.random.seed(10)
-X, T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.1)
+X,Q,T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.1)
 X[:,2] += 1.25; 
 
 X += 0.0002*np.random.randn(X.shape[0],3) 
 
-self = Cloth(X, T); 
+self = Cloth(X,Q,T); 
 dt = 1/60
-self.setSimulatorParameters(dt = dt, thck = 1, mu_s = 0.4, str = 0.005*1e-4, kappa_bnd = 0.075*1e-4, kappa_flt = 0*1e-3,
-                            shr = 5*1e-4, tol = 0.005, kappa = 1.2*1e-4, mu_f = 0.35, sub_steps = 8, slf = 0*0.001)
+self.setSimulatorParameters(dt = dt, thck = 1, mu_s = 0.4, str = 0.005*1e-4, kappa_bnd = 0.075*1e-4, 
+                            shr = 15*1e-4, tol = 0.005, kappa = 1.2*1e-4, mu_f = 0.25, sub_steps = 8, slf = 1e-4)
 self.plotMesh()
 tf = int(3.0/dt)
 inds = [363]; u = self.positions[inds]
@@ -34,7 +34,7 @@ u0 = u = self.positions[inds]
 for j in range(0*tf):    
     u[:,2] = u0[:,2] + 0.02*np.sin(2*t[j])
     self.simulate(u = u, control = inds)
-tf = int(3/dt)
+tf = int(4/dt)
 inds = []
 for k in range(tf):
     u = self.positions[inds]
@@ -44,5 +44,5 @@ print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 
-self.makeMovie(speed = 1, repeat = True, smooth = 0)
+self.makeMovie(speed = 1, repeat = True, smooth = 2)
 #kernprof -l -v test3.py > perfil_selfcols3.txt
