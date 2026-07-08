@@ -54,7 +54,7 @@ class Cloth:
         self.seams_IJK = [self.Is,self.Js,self.Ks]
 
         #for self-collisions
-        self.rad = 0.005 #radious of the balls
+        self.rad = 0.003 #radious of the balls
         self.last_check = np.array(verts, order = 'F') #for checking close self-collision pairs
         self.den_last = 1
         self.ke = 10 #get k nearest nodes to every node
@@ -1080,8 +1080,9 @@ class Cloth:
 
         if self.error_nf < -self.tol: #correct detected self-collisions
             #add new and previous selfcollisions
-            ind_s = np.nonzero((self.vals_nf/(2*self.rad)) < self.tol)[0]
+            ind_s = np.nonzero((self.vals_nf/(2*self.rad)) < -self.tol)[0]
             self.ind_slf_nf = self.unionMask(self.ind_slf_nf,ind_s)
+            #print('Face constraints: ',self.ind_slf_nf.shape[0])
             #correction for positions
             dlt_phi = self.solveFacesLCP(max_iters)
             phi += dlt_phi
@@ -1099,9 +1100,10 @@ class Cloth:
 
         if self.error_ee < -self.tol: #correct detected self-collisions
             #add new and previous selfcollisions
-            ind_s = np.nonzero((self.vals_ee/(2*self.rad)) < self.tol)[0]
+            ind_s = np.nonzero((self.vals_ee/(2*self.rad)) < -self.tol)[0]
             self.ind_slf_ee = self.unionMask(self.ind_slf_ee,ind_s)
-            self.cullRedundantEdgeConstraints(max_per_edge=3)
+            #self.cullRedundantEdgeConstraints(max_per_edge=3)
+            #print('Edge constraints: ',self.ind_slf_ee.shape[0])
             #correction for positions
             dlt_phi = self.solveEdgesLCP(max_iters)
             #dlt_phi = 0*phi
@@ -1279,7 +1281,7 @@ class Cloth:
             dlt_vals = -self.innerProduct(normals,dlt_pq)
             #compute multipliers
             res = num + dlt_vals - self.slf*landa
-            error_l = np.min(-res/(2*self.rad))
+            error_l = np.min(-res)/(2*self.rad)
             #print('error LCP: ',error_l)
             landa = np.maximum(0, landa + res/den)
             #corrections
@@ -1344,7 +1346,7 @@ class Cloth:
             dlt_vals = -self.innerProduct(normals,dlt_pq)
             #compute multipliers
             res = num + dlt_vals - self.slf*landa
-            error_l = np.min(-res/(2*self.rad))
+            error_l = np.min(-res)/(2*self.rad)
             #print('error LCP: ',error_l)
             landa = np.maximum(0, landa + res/den)
             #corrections
@@ -1974,7 +1976,7 @@ class Cloth:
 
                 #print('global edges error: ',self.error_ee)
 
-            #print("global iters:",n_iter)
+            print("global iters:",n_iter)
 
             if self.table is True:
                 phi = self.tableCollisions(phi)
