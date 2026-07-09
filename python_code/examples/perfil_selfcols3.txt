@@ -1,0 +1,509 @@
+[polyscope] Backend: openGL3_glfw -- Loaded openGL version: 3.3.0 NVIDIA 590.48.01
+Time: 6.937260627746582
+Average iterations 1.029047619047619
+Wrote profile results to 'test3.py.lprof'
+Timer unit: 1e-06 s
+
+Total time: 0.321191 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.Stretch.evaluate at line 495
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   495                                                   @profile    
+   496                                                   def evaluate(self,phi,u,control,grad=True):
+   497      8645       4262.1      0.5      1.3              phi_mat = phi.reshape((self.n_verts, 3), order='F')
+   498      8645     149085.0     17.2     46.4              vec = phi_mat[self.bars1,:] - phi_mat[self.bars0,:]; 
+   499      8645      53508.3      6.2     16.7              longs = np.einsum('ij,ij->i', vec, vec); 
+   500      8645       5929.1      0.7      1.8              val_str = longs - self.val0
+   501      8645       1197.1      0.1      0.4              if grad:
+   502      4323       9785.4      2.3      3.0                  grad1 = 2*(vec).flatten(order='F')
+   503      4323       3009.0      0.7      0.9                  grad0 = - grad1
+   504      4323      20705.0      4.8      6.4                  K = np.concatenate([grad0,grad1,self.Ks,self.Ku])*self.m_sqrt_JJ + 1e-16
+   505      4323      16598.7      3.8      5.2                  self.grad.data = K[self.order]
+   506      4323      15583.4      3.6      4.9                  self.gradT.data = K[self.orderT]
+   507      8645      14989.5      1.7      4.7              val_u = phi_mat[control].flatten(order='F') - u
+   508      8645      14995.6      1.7      4.7              val_s = (phi_mat[self.seams[:,0]]-phi_mat[self.seams[:,1]]).flatten(order='F')
+   509      8645      10532.5      1.2      3.3              val = np.concatenate([val_str,val_s,val_u])
+   510      8645       1009.9      0.1      0.3              return val
+
+Total time: 0.284781 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.Shear.evaluate at line 582
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   582                                                   @profile
+   583                                                   def evaluate(self,phi,u,control,grad=True):
+   584      8645       4715.1      0.5      1.7              phi_mat = phi.reshape((self.n_verts, 3), order='F')
+   585      8645      88139.0     10.2     30.9              vec1 = phi_mat[self.neighs1,:] - phi_mat[self.neighs0,:]; 
+   586      8645      84285.0      9.7     29.6              vec2 = phi_mat[self.neighs3,:] - phi_mat[self.neighs2,:]; 
+   587      8645      39788.5      4.6     14.0              dots = np.einsum('ij,ij->i', vec1, vec2)
+   588      8645       5309.7      0.6      1.9              val_shr = dots - self.val0
+   589      8645       1397.7      0.2      0.5              if grad:
+   590       866        165.7      0.2      0.1                  if self.n_crn > 0:
+   591       866        859.3      1.0      0.3                      _grad1 = vec2[-self.n_crn:].flatten(order='F')
+   592       866        491.6      0.6      0.2                      _grad2 = vec1[-self.n_crn:].flatten(order='F')
+   593       866        716.2      0.8      0.3                      _grad0 = -_grad1 -_grad2
+   594                                                               #all the grads minus the corners
+   595       866       1046.0      1.2      0.4                      grad1 = vec2[:-self.n_crn].flatten(order='F')
+   596       866        607.1      0.7      0.2                      grad0 = -grad1
+   597       866        896.2      1.0      0.3                      grad3 = vec1[:-self.n_crn].flatten(order='F')
+   598       866        559.4      0.6      0.2                      grad2 = -grad3
+   599                                                           else:
+   600                                                               grad1 = vec2.flatten(order='F')
+   601                                                               grad0 = -grad1
+   602                                                               grad3 = vec1.flatten(order='F')
+   603                                                               grad2 = -grad3
+   604                                                               _grad0 = []; _grad1 = []; _grad2 = []
+   605                                           
+   606      3464       5399.9      1.6      1.9                  K = np.concatenate([grad0,grad1,grad2,grad3,
+   607      2598        432.9      0.2      0.2                                     _grad0,_grad1,_grad2,self.Ks,self.Ku])*self.m_sqrt_JJ + 1e-16  
+   608       866       3481.7      4.0      1.2                  self.grad.data = K[self.order]
+   609       866       3233.4      3.7      1.1                  self.gradT.data = K[self.orderT]
+   610      8645      15454.7      1.8      5.4              val_u = phi_mat[control,:].flatten(order='F') - u
+   611      8645      15713.0      1.8      5.5              val_s = (phi_mat[self.seams[:,0]]-phi_mat[self.seams[:,1]]).flatten(order='F')
+   612      8645      11080.4      1.3      3.9              val = np.concatenate([val_shr,val_s,val_u])
+   613      8645       1008.9      0.1      0.4              return val
+
+Total time: 0 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.tableCollisions at line 855
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   855                                               @profile
+   856                                               def tableCollisions(self,phi):    
+   857                                                   phi_mat = phi.reshape((-1, 3), order="F")
+   858                                                   p = phi_mat.copy()
+   859                                           
+   860                                                   # Is particle center inside the box?
+   861                                                   inside = np.all((p >= self.box_min) & (p <= self.box_max), axis=1)
+   862                                           
+   863                                                   # --------------------------------------------------
+   864                                                   # Case 1: particle center is outside the box
+   865                                                   # --------------------------------------------------
+   866                                                   closest = np.clip(p, self.box_min, self.box_max)
+   867                                           
+   868                                                   direction = p - closest
+   869                                                   dist = self.computeNorm(direction) 
+   870                                           
+   871                                                   outside_hit = (~inside) & (dist < self.rad)
+   872                                           
+   873                                                   if np.any(outside_hit):
+   874                                                       n = direction[outside_hit] / dist[outside_hit, None]
+   875                                                       p[outside_hit] = closest[outside_hit] + n * self.rad
+   876                                           
+   877                                                   # --------------------------------------------------
+   878                                                   # Case 2: particle center is inside the box
+   879                                                   # Push it to the nearest face, plus radius.
+   880                                                   # --------------------------------------------------
+   881                                                   if np.any(inside):
+   882                                                       p_inside = p[inside]
+   883                                           
+   884                                                       dist_to_min = p_inside - self.box_min
+   885                                                       dist_to_max = self.box_max - p_inside
+   886                                           
+   887                                                       distances = np.concatenate([dist_to_min, dist_to_max], axis=1)
+   888                                                       closest_face = np.argmin(distances, axis=1)
+   889                                           
+   890                                                       corrected = p_inside.copy()
+   891                                           
+   892                                                       for i, face in enumerate(closest_face):
+   893                                                           if face < 3:
+   894                                                               axis = face
+   895                                                               corrected[i, axis] = self.box_min[axis] - self.rad
+   896                                                           else:
+   897                                                               axis = face - 3
+   898                                                               corrected[i, axis] = self.box_max[axis] + self.rad
+   899                                           
+   900                                                       p[inside] = corrected
+   901                                                   #friction
+   902                                                   dlt_phi = p - phi_mat
+   903                                                   nu_mat = dlt_phi.reshape((self.n_verts, 3), order='F')
+   904                                                   norm_Fn = self.computeNorm(nu_mat)
+   905                                                   nu = nu_mat/(norm_Fn[:,np.newaxis] + 1e-12)
+   906                                                   v = self.positions - p
+   907                                                   vt = v - (self.innerProduct(v,nu)[:,np.newaxis])*nu 
+   908                                                   #compute friction force vector
+   909                                                   F_mu = self.frictionForce(self.mu_table,norm_Fn,vt,cap = True)
+   910                                                   phi += (dlt_phi + F_mu).flatten(order="F") 
+   911                                                   return phi
+
+Total time: 0.0638675 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.floorCollisions at line 913
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   913                                               @profile
+   914                                               def floorCollisions(self,phi):
+   915      4200      10273.2      2.4     16.1          phi_mat = phi.reshape((self.n_verts, 3), order='F').copy()
+   916      4200      12604.9      3.0     19.7          ind_col = np.nonzero(phi_mat[:,2] < 0)[0]
+   917      4200        800.8      0.2      1.3          self.flr = False #bookeeping if floor collisions occurred
+   918      4200       1126.1      0.3      1.8          if ind_col.shape[0] > 0:
+   919      2108        276.4      0.1      0.4              self.flr = True
+   920                                                       #normal forces
+   921                                                       #norm_Fn = self.nodes_faces_count[ind_col]*np.abs(phi_mat[ind_col,2]) #normal force scaled
+   922      2108       3890.7      1.8      6.1              norm_Fn = np.abs(phi_mat[ind_col,2]) #normal force 
+   923      2108       2676.7      1.3      4.2              phi_mat[ind_col,2] = 0 #orthogonal projection to the floor          
+   924                                                       #friction
+   925      2108       7003.6      3.3     11.0              vt = (self.positions[ind_col] - phi_mat[ind_col]) #tangent friction direction per node 
+   926      2108       1338.4      0.6      2.1              vt[:,2] = 0; #project on the floor   
+   927                                                       #spread the forces         
+   928      2108      14102.0      6.7     22.1              F_mu = self.frictionForce(self.mu_floor,norm_Fn,vt,cap=True)  
+   929      2108       7030.0      3.3     11.0              phi_mat[ind_col] += F_mu  
+   930      2108       2211.3      1.0      3.5              phi = phi_mat.flatten(order='F') #update positions
+   931      4200        533.4      0.1      0.8          return phi  
+
+Total time: 0.0949134 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.computeFrictionCorrection at line 942
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   942                                               @profile
+   943                                               def computeFrictionCorrection(self,phi,dlt_phi):
+   944      4065       2220.8      0.5      2.3          phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+   945                                                   #friction: compute tangent direction
+   946      4065       1702.2      0.4      1.8          nu_mat = dlt_phi.reshape((self.n_verts, 3), order='F')
+   947      4065      20132.5      5.0     21.2          norm_Fn = self.computeNorm(nu_mat)
+   948      4065      11166.4      2.7     11.8          nu = nu_mat/(norm_Fn[:,np.newaxis] + 1e-12)
+   949      4065       3785.5      0.9      4.0          v = self.positions - phi_mat
+   950      4065      19517.6      4.8     20.6          vt = v - (self.innerProduct(v,nu)[:,np.newaxis])*nu 
+   951                                                   #compute friction force vector
+   952      4065      33067.1      8.1     34.8          F_mu = self.frictionForce(self.mu_self,norm_Fn,vt,cap = True)
+   953      4065       3321.3      0.8      3.5          return F_mu.flatten(order='F')
+
+Total time: 0.403263 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.updateSelfCollisions at line 956
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   956                                               @profile
+   957                                               def updateSelfCollisions(self,phi): 
+   958      4322       1959.5      0.5      0.5          phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+   959      4322     128212.9     29.7     31.8          phi_all = self.getExtendedMesh(phi_mat)
+   960                                                   #simplified CCD for the balls
+   961      4322     124179.5     28.7     30.8          xy = phi_all[self.near_nn1] - phi_all[self.near_nn0]
+   962                                                   #normal
+   963      4322      46090.1     10.7     11.4          norm_xy = self.computeNorm(xy)
+   964      4322      24895.3      5.8      6.2          normal_all = xy / norm_xy[:,np.newaxis]
+   965                                                   #orient normal
+   966      4322      38696.1      9.0      9.6          res0 = self.innerProduct(self.xy0,normal_all); flip = (res0 < 0); 
+   967      4322      13301.9      3.1      3.3          normal_all[flip] = -normal_all[flip]; norm_xy[flip] = -norm_xy[flip]             
+   968                                                   #evaluate the constraints
+   969      4322       5573.1      1.3      1.4          self.vals_slf = norm_xy - 2*self.rad
+   970      4322       1005.4      0.2      0.2          self.normals_slf = normal_all 
+   971      4322       1435.6      0.3      0.4          if self.vals_slf.shape[0] > 0:
+   972      4322      17914.1      4.1      4.4             self.error_slf = np.min(self.vals_slf)/(2*self.rad)
+   973                                                   else:
+   974                                                      self.error_slf = 1
+
+Total time: 1.17348 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.solveLCP at line 976
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   976                                               @profile
+   977                                               def solveLCP(self, max_iter = 50):
+   978                                                   #objects to compute only once
+   979      4065       7123.5      1.8      0.6          normals = self.normals_slf[self.ind_slf]
+   980      4065       3153.6      0.8      0.3          b0_col = self.near_nn0[self.ind_slf]; b1_col = self.near_nn1[self.ind_slf]
+   981      4065       5004.6      1.2      0.4          b_col = np.concatenate([b1_col,b0_col])
+   982                                                   #counts to take average impulses
+   983      4065       5423.7      1.3      0.5          count0 = np.bincount(b0_col, minlength=self.n_verts+self.n_edges)
+   984      4065       5218.0      1.3      0.4          count1 = np.bincount(b1_col, minlength=self.n_verts+self.n_edges)
+   985      4065       3633.1      0.9      0.3          count = count0 + count1; 
+   986                                                   #averages
+   987      4065      31711.5      7.8      2.7          avg = 1/(count + 1e-12); avg[count == 0] = 0; 
+   988                                                   #mass inverses: set controled to zero
+   989      4065      19618.8      4.8      1.7          w = np.concatenate([self.m_inv, 0.5*(self.m_inv[self.e0] + self.m_inv[self.e1])])
+   990      4065       3867.6      1.0      0.3          w[self.control] = 0
+   991      4065       4396.4      1.1      0.4          wa  = (avg*w)[:,np.newaxis]      
+   992                                                   #rads = self.rads[self.ind_slf]      
+   993                                           
+   994                                                   #initial impulses
+   995      4065       3369.8      0.8      0.3          num = -self.vals_slf[self.ind_slf]; 
+   996      4065      10202.2      2.5      0.9          den = w[b0_col] + w[b1_col] + self.slf
+   997      4065       5076.3      1.2      0.4          landa = np.maximum(0,num/den)
+   998                                                   #corrections
+   999      4065       5725.2      1.4      0.5          dlt = landa[:,np.newaxis]*normals
+  1000      4065       8070.5      2.0      0.7          dlt2 = np.concatenate([+dlt,-dlt], axis = 0)
+  1001                                                   #global correction
+  1002      4065       4298.8      1.1      0.4          dlt_tot = np.zeros((self.n_verts+self.n_edges,3))
+  1003      4065      31055.1      7.6      2.6          np.add.at(dlt_tot,b_col,dlt2); 
+  1004      4065      22985.7      5.7      2.0          dlt_phi = wa*dlt_tot
+  1005                                           
+  1006                                                   #iterative process
+  1007      4065        655.1      0.2      0.1          error_l = -1; ii = 0
+  1008     38763       8190.5      0.2      0.7          while error_l < -self.tol and ii < max_iter:  
+  1009     34698     123841.0      3.6     10.6              dlt_xy = dlt_phi[b1_col] - dlt_phi[b0_col]
+  1010     34698     102607.4      3.0      8.7              dlt_vals = -self.innerProduct(normals,dlt_xy)
+  1011                                                       #compute multipliers
+  1012     34698      39447.6      1.1      3.4              res = num + dlt_vals - self.slf*landa
+  1013     34698     108822.2      3.1      9.3              error_l = np.min(-res)/(2*self.rad)
+  1014     34698      41719.6      1.2      3.6              landa = np.maximum(0, landa + res/den)
+  1015                                                       #corrections
+  1016     34698      39965.8      1.2      3.4              dlt = landa[:,np.newaxis]*normals
+  1017     34698      52673.9      1.5      4.5              dlt2 = np.concatenate([+dlt,-dlt], axis = 0)
+  1018                                                       #global correction
+  1019     34698      36385.7      1.0      3.1              dlt_tot.fill(0.0)
+  1020     34698     250250.8      7.2     21.3              np.add.at(dlt_tot,b_col,dlt2); 
+  1021     34698     183528.5      5.3     15.6              dlt_phi = wa*dlt_tot
+  1022     34698       5022.4      0.1      0.4              ii += 1
+  1023                                                   #print(ii)
+  1024      4065        438.4      0.1      0.0          return dlt_phi
+
+Total time: 4.20943 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.selfCollisions at line 1027
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1027                                               @profile
+  1028                                               def selfCollisions(self,phi,n_iter,max_iters=50):    
+  1029      4322        627.1      0.1      0.0          if n_iter == 0:
+  1030                                                       #precompute objects for selfcollisions
+  1031      4200    1466367.1    349.1     34.8              self.prepareCollisions(phi)        
+  1032                                                   #check for possible selfcollisions
+  1033      4322     415858.8     96.2      9.9          self.updateSelfCollisions(phi)
+  1034                                           
+  1035      4322       1652.5      0.4      0.0          if self.error_slf < -self.tol: #correct detected self-collisions
+  1036                                                       #add new and previous selfcollisions
+  1037      4065      20461.1      5.0      0.5              ind_s = np.nonzero((self.vals_slf/(2*self.rad)) < self.tol)[0]
+  1038      4065      17030.3      4.2      0.4              self.ind_slf = self.unionMask(self.ind_slf,ind_s)
+  1039                                                       #print('considered constraints: ',self.ind_slf.shape[0])
+  1040                                                       #correction for positions
+  1041      4065    1229547.4    302.5     29.2              dlt_phi = self.solveLCP(max_iters)
+  1042      4065     127983.2     31.5      3.0              phi_prv = self.getExtendedMesh(phi) + dlt_phi
+  1043                                           
+  1044                                                       #project into valid space
+  1045      4065      60409.2     14.9      1.4              res = self.Em @ phi_prv 
+  1046      4065     501928.6    123.5     11.9              lmbds = self.factor_Em(res)
+  1047      4065     237116.8     58.3      5.6              dlt = -self.EmT@lmbds
+  1048                                                       #phi_mod = phi_all + dlt
+  1049                                                       #print(np.max(np.max(np.abs(self.Em @ phi_mod))))
+  1050      4065      12986.6      3.2      0.3              dlt_tot = ((dlt_phi + dlt)[:self.n_verts]).flatten(order='F')
+  1051                                           
+  1052      4065        493.6      0.1      0.0              """
+  1053                                                       #lets project into stretch space
+  1054                                                       b = -self.stretch.grad@dlt_phi
+  1055                                                       dlt_lambda = self.stretch.factor(b)
+  1056                                                       prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
+  1057                                                       dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
+  1058                                                       """
+  1059                                                       #apply friction if needed
+  1060      4065       1318.0      0.3      0.0              if self.mu_self > 0 and n_iter < 5:
+  1061      4065     109784.8     27.0      2.6                  F_mu = self.computeFrictionCorrection(phi + dlt_tot,dlt_tot)
+  1062                                                       else:
+  1063                                                           F_mu = 0*dlt_tot
+  1064                                           
+  1065                                                       #update phi
+  1066      4065       5302.3      1.3      0.1              phi += dlt_tot + F_mu
+  1067                                                       
+  1068      4322        565.1      0.1      0.0          return phi
+
+Total time: 1.12757 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.computeClosePairs at line 1181
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1181                                               @profile
+  1182                                               def computeClosePairs(self,phi_mat):
+  1183                                                   #build the tree only for the nodes and middle edges
+  1184       540      16509.2     30.6      1.5          phi_all = self.getExtendedMesh(phi_mat)
+  1185       540      49201.4     91.1      4.4          tree_n = KDTree(phi_all)
+  1186                                           
+  1187                                                   #node-node close pairs
+  1188       540     963840.1   1784.9     85.5          dists, neighs = tree_n.query(phi_all, k=self.kn+1) #query it for k nodes neighbors
+  1189                                                   #reshape removing the first pair
+  1190       540       4751.9      8.8      0.4          dist = dists[:,1:].reshape(-1)
+  1191       540       4311.1      8.0      0.4          nj = neighs[:,1:].reshape(-1)
+  1192                                                   #remove far away pairs and duplicates
+  1193       540       7300.2     13.5      0.6          mask = (dist < self.eps_sus) & (self.ni < nj)
+  1194       540      49544.3     91.7      4.4          ni = self.ni[mask]; nj = nj[mask]
+  1195                                                   #second mask
+  1196       540      17587.3     32.6      1.6          mask2 = ~self.share_feature[ni,nj]
+  1197       540      13567.8     25.1      1.2          ni = ni[mask2]; nj = nj[mask2]
+  1198                                                   #third mask
+  1199                                                   #mask3 = ~self.share_control[ni,nj]
+  1200                                                   #ni = ni[mask3]; nj = nj[mask3]
+  1201                                                   #set radiouses to avoid jitering when the balls are too big
+  1202                                                   #self.rads = self.matrix_rads[ni,nj]
+  1203                                                   #potential colliding nodes-nodes
+  1204       540        248.8      0.5      0.0          self.near_nn0 = ni; self.near_nn1 = nj
+  1205                                           
+  1206                                                   #mask for indices
+  1207       540        705.4      1.3      0.1          self.mask_col = np.zeros(self.near_nn0.shape[0], dtype=bool)
+
+Total time: 1.19253 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.updateClosePairs at line 1209
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1209                                               @profile
+  1210                                               def updateClosePairs(self,phi_mat):
+  1211                                                   #check close pairs
+  1212      4200      11384.1      2.7      1.0          diff = phi_mat - self.last_check
+  1213      4200      40690.4      9.7      3.4          mov = np.sqrt(np.max(self.innerProduct(diff, diff)/self.den_last))
+  1214      4200       1720.4      0.4      0.1          if (mov > self.mov_tol) or (self.total_iters == 0) or self.update_chol: #only check when at least 1 node has moved more than mov_eps
+  1215       540    1133944.0   2099.9     95.1              self.computeClosePairs(phi_mat) #update close pairs
+  1216       540       1448.8      2.7      0.1              self.last_check = phi_mat.copy() #update last checked mesh
+  1217       540       3345.0      6.2      0.3              self.den_last = self.innerProduct(self.last_check,self.last_check)
+  1218                                                       #print("Close Nodes-Nodes")
+  1219                                                       #print(np.vstack([self.near_nn0,self.near_nn1]).T)
+
+Total time: 0.391317 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.getExtendedMesh at line 1221
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1221                                               @profile
+  1222                                               def getExtendedMesh(self,phi):
+  1223     13551       6895.6      0.5      1.8          phi_mat = phi.reshape((self.n_verts,3),order='F')
+  1224     13551     344871.2     25.4     88.1          phi_e = 0.5*(phi_mat[self.e0] + phi_mat[self.e1])
+  1225     13551      39549.8      2.9     10.1          return np.concatenate([phi_mat,phi_e],axis = 0)
+
+Total time: 1.45779 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.prepareCollisions at line 1227
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1227                                               @profile
+  1228                                               def prepareCollisions(self,phi):
+  1229      4200       2095.8      0.5      0.1          phi_mat = phi.reshape((self.n_verts, 3), order='F') 
+  1230      4200    1200252.9    285.8     82.3          self.updateClosePairs(phi_mat)
+  1231                                                   #do costly indexing operations only once
+  1232      4200     130155.7     31.0      8.9          self.pos_all = self.getExtendedMesh(self.positions) 
+  1233      4200     123293.6     29.4      8.5          self.xy0 = self.pos_all[self.near_nn1] - self.pos_all[self.near_nn0]
+  1234                                                   #store past collisions
+  1235      4200       1231.2      0.3      0.1          self.ind_slf = self.empty
+  1236                                                   #store if floor collisions have happened
+  1237      4200        760.8      0.2      0.1          self.flr = True
+
+Total time: 2.08858 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.projectConstraints at line 1246
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1246                                               @profile
+  1247                                               def projectConstraints(self,constraints,phi,u,control,landa,par,den_error,n):
+  1248                                                   #evaluate constraints
+  1249      8644       1474.0      0.2      0.1          if n == 0:
+  1250      5187     256128.8     49.4     12.3              val = constraints.evaluate(phi,u,control,grad=True)
+  1251      5187       1232.1      0.2      0.1              if self.update_chol or constraints.factor is None:
+  1252        24      10613.5    442.2      0.5                 constraints.factor = cholesky_AAt(constraints.grad, beta = par) 
+  1253                                                       else:
+  1254      5163    1114376.7    215.8     53.4                 constraints.factor.cholesky_AAt_inplace(constraints.grad, beta = par)
+  1255                                                   else:
+  1256      3457     119632.5     34.6      5.7              val = constraints.evaluate(phi,u,control,grad=False)
+  1257      8644      16569.5      1.9      0.8          b = - val - par*landa 
+  1258                                                   #solve
+  1259      8644     116038.8     13.4      5.6          dlt_lambda = constraints.factor(b)
+  1260                                                   #update
+  1261      8644       5446.4      0.6      0.3          landa += dlt_lambda
+  1262      8644      94684.7     11.0      4.5          phi += self.m_sqrt_mat*(constraints.gradT@dlt_lambda)
+  1263                                           
+  1264                                                   #check errors 
+  1265      8644     284673.4     32.9     13.6          val = constraints.evaluate(phi,u,control,grad=False)
+  1266      8644      23139.5      2.7      1.1          aux_error = (val[:constraints.n_conds] + par*landa[:constraints.n_conds])/(constraints.abs_val0 + den_error)
+  1267      8644      43268.1      5.0      2.1          error = np.linalg.norm(aux_error,ord=np.inf) 
+  1268                                           
+  1269      8644       1302.9      0.2      0.1          return phi, landa, error
+
+Total time: 0.421551 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.TrapezoidalRule at line 1277
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1277                                               @profile
+  1278                                               def TrapezoidalRule(self):
+  1279      4200     219430.0     52.2     52.1          q = self.half_dt2_delta_Fg + (self.dt_rho_M * self.velocities) + (self.E_aux @ self.positions)
+  1280                                                   #solve the sistem with the cholesky factor
+  1281      4200     199101.0     47.4     47.2          x = self.factor_Et(q)
+  1282      4200       3020.4      0.7      0.7          return x.reshape((3*self.n_verts,),order='F')
+
+Total time: 6.92461 s
+File: /home/fcoltraro/Documents/GitHub/clothilde-sim/python_code/implementation/Cloth.py
+Function: Cloth.simulate at line 1333
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1333                                               @profile
+  1334                                               def simulate(self, u, control):
+  1335                                           
+  1336                                                   #process the control inputs
+  1337       420       5273.8     12.6      0.1          U = self.processControlInputs(u,control)
+  1338                                           
+  1339                                                   #substepping
+  1340       420         53.5      0.1      0.0          n_iter_sub = 0
+  1341      4620        873.2      0.2      0.0          for s in range(self.sub_steps):
+  1342                                           
+  1343                                                       #current position of the cloth 
+  1344      4200       2857.6      0.7      0.0              phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
+  1345                                           
+  1346                                                       #interpolated control
+  1347      4200        824.0      0.2      0.0              u_raw = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+  1348      4200      37943.0      9.0      0.5              u = self.limitControlVelocity(u_raw)
+  1349                                           
+  1350                                                       #unconstrained step to correct
+  1351      4200     432556.7    103.0      6.2              phi = self.unconstrainedStep(self.implicitEuler)
+  1352                                           
+  1353                                                       #lagrange multipliers for the shear and stretch constraints
+  1354      4200       5195.8      1.2      0.1              lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
+  1355      4200       3016.3      0.7      0.0              lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
+  1356                                           
+  1357                                                       #solver variables for inextensiblity 
+  1358      4200       1121.5      0.3      0.0              n_iter = 0; error_str = np.inf; error_shr = np.inf; 
+  1359                                           
+  1360      8522       2489.7      0.3      0.0              while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: 
+  1361                                           
+  1362                                                           #shearing
+  1363      8644     697015.2     80.6     10.1                  phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
+  1364      4322       1026.1      0.2      0.0                                                                      lambda_shr,self.shr,0.005,s%5)
+  1365                                           
+  1366                                                           #stretching
+  1367      8644    1418228.2    164.1     20.5                  phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
+  1368      4322        651.2      0.2      0.0                                                                      lambda_str,self.str,0,0)   
+  1369                                                           
+  1370                                                           
+  1371                                                           #self-collisions
+  1372      4322    4225477.9    977.7     61.0                  phi = self.selfCollisions(phi,n_iter); 
+  1373                                           
+  1374                                                           #iteration count 
+  1375      4322        789.7      0.2      0.0                  n_iter += 1
+  1376                                           
+  1377                                                       #print('global iters: ',n_iter)
+  1378                                           
+  1379      4200        847.6      0.2      0.0              if self.table is True:
+  1380                                                           phi = self.tableCollisions(phi)
+  1381                                           
+  1382                                           
+  1383                                                       #floor collisions
+  1384      4200      74944.9     17.8      1.1              phi = self.floorCollisions(phi)
+  1385                                           
+  1386                                                       #update internal cloth variables
+  1387      4200       7157.2      1.7      0.1              dphi = (phi-phi0)/self.dt
+  1388      4200       2225.2      0.5      0.0              self.positions = phi.reshape((self.n_verts, 3), order='F')
+  1389      4200       2419.3      0.6      0.0              self.velocities = dphi.reshape((self.n_verts, 3), order='F')
+  1390      4200        936.7      0.2      0.0              n_iter_sub += n_iter
+  1391                                           
+  1392                                                   #save final positions and velocities
+  1393       420        150.2      0.4      0.0          self.history_pos.append(self.positions)
+  1394       420         78.6      0.2      0.0          self.history_vel.append(self.velocities)
+  1395       420        185.6      0.4      0.0          self.total_iters += n_iter_sub/self.sub_steps
+  1396                                           
+  1397                                                   #warnings
+  1398       420        270.5      0.6      0.0          if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
+  1399                                                      print("WARNING: average of more than 4 iterations taken, for better performance reduce dt or increase thck")
+  1400                                                      self.warning = True
+

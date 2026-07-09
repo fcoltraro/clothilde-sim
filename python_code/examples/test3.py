@@ -2,14 +2,14 @@ import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
-from implementation.Cloth import Cloth 
+from implementation.ClothBary import Cloth 
 from implementation.utils import createRectangularMesh
 import numpy as np
 #np.set_printoptions(threshold=sys.maxsize)
 import time
 
 # Caida libre
-n = 25; na = n; nb = n
+n = 30; na = n; nb = n
 m = np.int32(np.floor(n/2))
 np.random.seed(10)
 X,Q,T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.1)
@@ -19,11 +19,11 @@ X += 0.0002*np.random.randn(X.shape[0],3)
 
 self = Cloth(X,Q,T); 
 dt = 1/60
-self.setSimulatorParameters(dt = dt, thck = 1, mu_s = 0.4, str = 0.005*1e-4, kappa_bnd = 0.075*1e-4, 
-                            shr = 15*1e-4, tol = 0.0075, kappa = 1.2*1e-4, mu_f = 0.25, sub_steps = 10, slf = 0*1e-4)
+self.setSimulatorParameters(dt = dt, thck = 1.1, mu_s = 0.3, str = 0.005*1e-4, kappa_bnd = 0.075*1e-4, 
+                            shr = 1.5*1e-4, tol = 0.0075, kappa = 1.2*1e-4, mu_f = 0.3, sub_steps = 10, slf = 0*0.005)
 self.plotMesh()
 tf = int(3.0/dt)
-inds = [363]; u = self.positions[inds]
+inds = [643]; u = self.positions[inds]
 start_time = time.time()
 for i in range(tf):
     self.simulate(u = u, control = inds)

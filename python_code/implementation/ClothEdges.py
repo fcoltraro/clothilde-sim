@@ -24,7 +24,6 @@ class Cloth:
         #topology of the mesh
         self.faces = np.array(tris) #quadrangulation of the vertices in positions (index based)
         self.quads = np.array(quads)
-        self.n_quads = self.quads.shape[0]
         assert self.quads.shape[1] == 4 and self.faces.ndim == 2, 'Current implementation only supports quad meshes'
         self.edges = [] #list of unoriented edges in set form
         self.edges_matrix = np.zeros([0,2]) #edges in matrix form for efficient computations
@@ -152,7 +151,6 @@ class Cloth:
         # compute all auxiliar objects for fast simulation
         self.checkQuadMesh()
         self.computeEdges()
-        self.buildDiagonalEdgesPerQuad()
         #self.buildShareEdgeMatrix()
         self.buildShareFeatureMatrix()
         self.buildAdjacencyMatrices()
@@ -185,25 +183,17 @@ class Cloth:
             self.edges = list(edges) #list of unoriented edges in set form
             self.edges_matrix = np.array(list(map(list,self.edges))) #in matrix form, handy for some computations
             self.n_edges = len(self.edges)
+            self.e0 = self.edges_matrix[:,0]; self.e1 = self.edges_matrix[:,1]
+            self.ni = np.repeat(np.arange(self.n_verts + self.n_edges),self.kn)
 
-            """
-            #diagonal edges only
-            bars = np.vstack([self.quads[:,[0,1]],self.quads[:,[1,2]],
-                          self.quads[:,[2,3]],self.quads[:,[3,0]]])
-            bars = np.unique(np.sort(bars, axis = 1),axis=0)
-            bars_t = np.vstack([self.faces[:,[0,1]],self.faces[:,[1,2]],self.faces[:,[2,0]]])
-            bars_t = np.unique(np.sort(bars_t, axis = 1),axis=0)
-
-            # Encode each edge (i, j) as a unique integer key
-            keys_bars = bars[:, 0] * self.n_verts + bars[:, 1]
-            keys_bars_t = bars_t[:, 0] * self.n_verts + bars_t[:, 1]
-
-            # Keep triangle edges that are not quad edges
-            mask_diag = ~np.isin(keys_bars_t, keys_bars)
-            self.diag_bars = bars_t[mask_diag]
-            self.e0 = self.diag_bars[:,0]; self.e1 = self.diag_bars[:,1]
-            """
-            self.ni = np.repeat(np.arange(self.n_verts + self.n_quads),self.kn)
+            #correctness of middle points of edges
+            aux_e = np.arange(self.n_edges); ones = np.ones_like(aux_e)
+            row = np.concatenate((aux_e, aux_e, aux_e))
+            col = np.concatenate((self.e0, self.e1,self.n_verts+aux_e))
+            data = np.concatenate((0.5*ones,0.5*ones,-ones))
+            self.Em = sp.coo_matrix((data, (row, col)), shape=(self.n_edges, self.n_verts+self.n_edges)).tocsc()
+            self.EmT = self.Em.T.tocsr()
+            self.factor_Em = cholesky_AAt(self.Em, beta = 0) 
 
 
     def buildAdjacencyMatrices(self):
@@ -719,14 +709,13 @@ class Cloth:
         min_l = np.min(longs); max_l = np.max(longs)
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
         #assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
-        """
         #take into account diagonals
-        d0 = self.quads[:,0]; d1 = self.quads[:,1]; d2 = self.quads[:,2]; d3 = self.quads[:,3]; 
+        d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
         diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
-        diags = np.concatenate([diag0,diag1]) 
+        """
         #constant radious of the balls
-        self.rad = self.thck*np.mean(diags)/4.05
+        self.rad = self.thck*np.mean(longs)/4.5
         self.max_step = self.max_mov*np.mean(longs)
 
         #matrix of radiouses
@@ -991,8 +980,8 @@ class Cloth:
         b0_col = self.near_nn0[self.ind_slf]; b1_col = self.near_nn1[self.ind_slf]
         b_col = np.concatenate([b1_col,b0_col])
         #counts to take average impulses
-        count0 = np.bincount(b0_col, minlength=self.n_verts+self.n_quads)
-        count1 = np.bincount(b1_col, minlength=self.n_verts+self.n_quads)
+        count0 = np.bincount(b0_col, minlength=self.n_verts+self.n_edges)
+        count1 = np.bincount(b1_col, minlength=self.n_verts+self.n_edges)
         count = count0 + count1; 
         #averages
         avg = 1/(count + 1e-12); avg[count == 0] = 0; 
@@ -1010,7 +999,7 @@ class Cloth:
         dlt = landa[:,np.newaxis]*normals
         dlt2 = np.concatenate([+dlt,-dlt], axis = 0)
         #global correction
-        dlt_tot = np.zeros((self.n_verts+self.n_quads,3))
+        dlt_tot = np.zeros((self.n_verts+self.n_edges,3))
         np.add.at(dlt_tot,b_col,dlt2); 
         dlt_phi = wa*dlt_tot
 
@@ -1047,9 +1036,7 @@ class Cloth:
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_slf/(2*self.rad)) < self.tol)[0]
             self.ind_slf = self.unionMask(self.ind_slf,ind_s)
-            #print('considered constraints: ',self.ind_slf.shape[0])
-            #print("Close Nodes-Nodes")
-            #print(np.vstack([self.near_nn0[self.ind_slf],self.near_nn1[self.ind_slf]]).T)
+            print('considered constraints: ',self.ind_slf.shape[0])
             #correction for positions
             dlt_phi = self.solveLCP(max_iters)
             phi_prv = self.getExtendedMesh(phi) + dlt_phi
@@ -1061,12 +1048,13 @@ class Cloth:
             #phi_mod = phi_all + dlt
             #print(np.max(np.max(np.abs(self.Em @ phi_mod))))
             dlt_tot = ((dlt_phi + dlt)[:self.n_verts]).flatten(order='F')
+
             """
             #lets project into stretch space
-            b = -self.stretch.grad@dlt_tot
+            b = -self.stretch.grad@dlt_phi
             dlt_lambda = self.stretch.factor(b)
-            prj_dlt_phi = dlt_tot + (self.stretch.gradT@dlt_lambda)
-            dlt_tot = 0.5*(dlt_tot + prj_dlt_phi)
+            prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
+            dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
             """
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
@@ -1137,77 +1125,6 @@ class Cloth:
 
         self.share_edge = share_edge
 
-    
-    def buildDiagonalEdgesPerQuad(self):
-        """
-        Builds self.diag_bars, self.e0, self.e1 such that
-
-            self.diag_bars[q]
-            self.e0[q], self.e1[q]
-
-        are the diagonal edge of self.quads[q].
-
-        Assumes each quad is triangulated using either diagonal (0, 2)
-        or diagonal (1, 3).
-        """
-        def edge_keys(edges, n_verts):
-            """
-            Unique key for undirected edges.
-            edges: (m, 2)
-            """
-            edges = np.asarray(edges, dtype=np.int64)
-            a = np.minimum(edges[:, 0], edges[:, 1])
-            b = np.maximum(edges[:, 0], edges[:, 1])
-            return a * np.int64(n_verts) + b
-
-        q = np.asarray(self.quads, dtype=np.int64)
-        n_q = q.shape[0]
-
-        # All triangle edges
-        tri_edges = np.vstack([
-            self.faces[:, [0, 1]],
-            self.faces[:, [1, 2]],
-            self.faces[:, [2, 0]],
-        ])
-
-        tri_edge_keys = np.unique(edge_keys(tri_edges, self.n_verts))
-
-        # Two possible diagonals of each quad
-        diag_02 = q[:, [0, 2]]
-        diag_13 = q[:, [1, 3]]
-
-        key_02 = edge_keys(diag_02, self.n_verts)
-        key_13 = edge_keys(diag_13, self.n_verts)
-
-        has_02 = np.isin(key_02, tri_edge_keys)
-        has_13 = np.isin(key_13, tri_edge_keys)
-
-        # Exactly one diagonal should be present for every quad
-        bad = has_02 == has_13
-        if np.any(bad):
-            bad_ids = np.where(bad)[0]
-            raise ValueError(
-                f"Could not identify a unique diagonal for {len(bad_ids)} quads. "
-                f"First bad quads: {bad_ids[:10]}"
-            )
-
-        diag_bars = np.empty((n_q, 2), dtype=np.int64)
-        diag_bars[has_02] = diag_02[has_02]
-        diag_bars[has_13] = diag_13[has_13]
-
-        self.diag_bars = diag_bars
-        self.e0 = diag_bars[:, 0]
-        self.e1 = diag_bars[:, 1]
-
-        #correctness of middle points of edges
-        aux_e = np.arange(self.n_quads); ones = np.ones_like(aux_e)
-        row = np.concatenate((aux_e, aux_e, aux_e))
-        col = np.concatenate((self.e0, self.e1,self.n_verts+aux_e))
-        data = np.concatenate((0.5*ones,0.5*ones,-ones))
-        self.Em = sp.coo_matrix((data, (row, col)), shape=(self.n_quads, self.n_verts+self.n_quads)).tocsc()
-        self.EmT = self.Em.T.tocsr()
-        self.factor_Em = cholesky_AAt(self.Em, beta = 0) 
-
 
     def buildShareFeatureMatrix(self):
         """
@@ -1220,36 +1137,43 @@ class Cloth:
         """
 
         n_v = self.n_verts
-        n_q = self.n_quads
-        n_all = n_v + n_q
+        n_e = self.n_edges
+        n_all = n_v + n_e
 
         share_feature = np.zeros((n_all, n_all), dtype=bool)
 
         # A ball should not collide with itself
         np.fill_diagonal(share_feature, True)
 
-        quads = np.asarray(self.quads, dtype=np.int64)
-        mid_nodes = np.arange(n_q) + n_v
+        e0 = self.e0
+        e1 = self.e1
+        edge_nodes = np.arange(n_e) + n_v
 
         # Vertex-vertex exclusions: endpoints of the same mesh edge
-        share_feature[self.edges_matrix[:,0], self.edges_matrix[:,1]] = True
-        share_feature[self.edges_matrix[:,1], self.edges_matrix[:,0]] = True
+        share_feature[e0, e1] = True
+        share_feature[e1, e0] = True
 
-        #Midpoint of quad q does not collide with any of the four vertices of quad q
-        share_feature[mid_nodes[:, None], quads] = True
-        share_feature[quads, mid_nodes[:, None]] = True
+        # Edge-midpoint with its two endpoint vertices
+        share_feature[e0, edge_nodes] = True
+        share_feature[edge_nodes, e0] = True
 
-        # Midpoint-midpoint pairs of quads sharing a vertex do not collide
-        incident_quads = [[] for _ in range(n_v)]
-        for qi, quad in enumerate(quads):
-            for v in quad:
-                incident_quads[v].append(qi)
+        share_feature[e1, edge_nodes] = True
+        share_feature[edge_nodes, e1] = True
 
-        for qs in incident_quads:
-            if len(qs) <= 1:
+        # Edge-midpoint with edge-midpoint if the two edges share a vertex
+        # Build vertex -> incident edges adjacency
+        incident_edges = [[] for _ in range(n_v)]
+        for ei, (a, b) in enumerate(zip(e0, e1)):
+            incident_edges[a].append(ei)
+            incident_edges[b].append(ei)
+
+        for edges in incident_edges:
+            if len(edges) <= 1:
                 continue
 
-            ids = np.asarray(qs, dtype=np.int64) + n_v
+            ids = np.asarray(edges) + n_v
+
+            # all edge-midpoint balls incident to the same vertex should not collide
             share_feature[np.ix_(ids, ids)] = True
 
         self.share_feature = share_feature
@@ -1450,7 +1374,7 @@ class Cloth:
                 #iteration count 
                 n_iter += 1
 
-            print('global iters: ',n_iter)
+            #print('global iters: ',n_iter)
 
             if self.table is True:
                 phi = self.tableCollisions(phi)
