@@ -31,9 +31,9 @@ tf = int(2.5/dt)
 t = np.linspace(0,2*np.pi,tf)
 inds = [na-1]
 u0 = u = self.positions[inds]
-for j in range(tf):    
+for j in range(0*tf):    
     #print(j)
-    u[:,2] = u0[:,2] + 0.03*np.sin(2*t[j])
+    u[:,2] = u0[:,2] + 0.025*np.sin(2*t[j])
     self.simulate(u = u, control = inds)
 tf = int(4/dt)
 inds = []
@@ -45,5 +45,5 @@ print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 
-self.makeMovie(speed = 1, repeat = False, smooth = 0)
+self.makeMovie(speed = 1, repeat = True, smooth = 2)
 #kernprof -l -v test3.py > perfil_selfcols3.txt

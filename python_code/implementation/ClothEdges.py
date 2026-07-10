@@ -1385,7 +1385,7 @@ class Cloth:
                 #iteration count 
                 n_iter += 1
 
-            #print('global iters: ',n_iter)
+            print(n_iter)
 
             if self.table is True:
                 phi = self.tableCollisions(phi)

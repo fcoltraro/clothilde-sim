@@ -2,7 +2,7 @@ import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
-from implementation.ClothTris import Cloth
+from implementation.ClothEdges import Cloth
 from implementation.utils import createRectangularMesh
 import numpy as np
 np.set_printoptions(threshold=sys.maxsize)
@@ -28,7 +28,7 @@ inds = [0,na-1]
 u = self.positions[inds]
 start_time = time.time()
 for i in range(tf):
-    print('Iteration: ',i)
+    #print('Iteration: ',i)
     if i == int(tf/2):
         inds = []
         u = self.positions[inds]
