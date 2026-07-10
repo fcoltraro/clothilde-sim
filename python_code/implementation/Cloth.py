@@ -727,11 +727,36 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
+
+        #edges that share a node
+        S = self.A0 @ self.A0.T
+        ei, ej = S.nonzero()
+        # avoids duplicates and self-pairs
+        mask = ei < ej          
+        ei = ei[mask]
+        ej = ej[mask]
+        # find endpoints that are not shared
+        e0 = self.edges_matrix[ei]
+        e1 = self.edges_matrix[ej]
+        same00 = e0[:, 0] == e1[:, 0]
+        same01 = e0[:, 0] == e1[:, 1]
+        same10 = e0[:, 1] == e1[:, 0]
+        same11 = e0[:, 1] == e1[:, 1]
+        #take the opposites
+        pairs = np.empty((len(ei), 2), dtype=self.edges_matrix.dtype)
+        pairs[same00] = np.column_stack([e0[same00, 1], e1[same00, 1]])
+        pairs[same01] = np.column_stack([e0[same01, 1], e1[same01, 0]])
+        pairs[same10] = np.column_stack([e0[same10, 0], e1[same10, 1]])
+        pairs[same11] = np.column_stack([e0[same11, 0], e1[same11, 0]])
+        #make the pair of nodes unique
+        pairs = np.sort(pairs, axis=1)
+        pairs = np.unique(pairs, axis=0)
+        #reduce their collision radious in half
+        matrix_rads[pairs[:,0],pairs[:,1]] = 1.1*matrix_rads[pairs[:,0],pairs[:,1]]
+        matrix_rads[pairs[:,1],pairs[:,0]] = 1.1*matrix_rads[pairs[:,1],pairs[:,0]]
+
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
-        #edges that share a node
-        #S = self.A0 @ self.A0.T
-        #ei, ej = S.nonzero()
 
  
     def setSimulatorParameters(self, dt = 1/60, tol = 0.0075, sub_steps = 10,
@@ -1034,11 +1059,13 @@ class Cloth:
             #correction for positions
             dlt_phi = self.solveLCP(max_iters)
             
+            
             #lets project into stretch space
             b = -self.stretch.grad@dlt_phi
             dlt_lambda = self.stretch.factor(b)
             prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
             dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
+            
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
