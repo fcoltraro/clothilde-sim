@@ -2,7 +2,7 @@ import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
-from implementation.ClothQuads import Cloth 
+from implementation.Cloth import Cloth 
 from implementation.utils import createRectangularMesh
 import numpy as np
 import time
@@ -21,7 +21,7 @@ dt = 1/60
 self.setSimulatorParameters(shr=1*1e-4, dt = dt, tol = 0.005, thck = 0.9, kappa=0.25*1e-4, mu_f=0.25, kappa_bnd = 0, slf=1e-4, sub_steps=8, mu_s= 0.4)
 self.plotMesh()
 tf = int(5/dt)
-inds = [0,na-1]
+inds = [0,na*nb-1]
 start_time = time.time()
 for i in range(tf):
     if i == int(tf/2):

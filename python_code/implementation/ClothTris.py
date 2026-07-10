@@ -690,8 +690,10 @@ class Cloth:
 
     def computeRadiouses(self):
         #lenght of edges of the quad mesh
-        e0 = self.edges_matrix[:,0]; e1 = self.edges_matrix[:,1]
-        longs = self.computeNorm(self.positions[e1]-self.positions[e0])
+        e0 = self.quads[:,0]; e1 = self.quads[:,1]; e2 = self.quads[:,2]
+        longs0 = self.computeNorm(self.positions[e1]-self.positions[e0])
+        longs1 = self.computeNorm(self.positions[e1]-self.positions[e2])
+        longs = np.concatenate([longs0,longs1])
         """
         min_l = np.min(longs); max_l = np.max(longs)
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
@@ -708,8 +710,8 @@ class Cloth:
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
         #reduce in case it is too big
-        sum_rads = np.minimum(2*self.rad,0.976*longs)
-        matrix_rads[e0,e1] = sum_rads; matrix_rads[e1,e0] = sum_rads   
+        #sum_rads = np.minimum(2*self.rad,0.976*longs)
+        #matrix_rads[e0,e1] = sum_rads; matrix_rads[e1,e0] = sum_rads   
         """
         #do the same for the diagonals
         sum_rads0 = np.minimum(2*self.rad,0.976*diag0)
@@ -1010,7 +1012,7 @@ class Cloth:
 
 
     @profile
-    def selfCollisions(self,phi,n_iter,max_iters=50):    
+    def selfCollisions(self,phi,n_iter,max_iters=100):    
         if n_iter == 0:
             #precompute objects for selfcollisions
             self.prepareCollisions(phi)        
@@ -1021,7 +1023,7 @@ class Cloth:
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_slf/self.rads) < self.tol)[0]
             self.ind_slf = self.unionMask(self.ind_slf,ind_s)
-            print('considered constraints: ',self.ind_slf.shape[0])
+            #print('considered constraints: ',self.ind_slf.shape[0])
             #correction for positions
             dlt_phi = self.solveLCP(max_iters)
 
@@ -1032,6 +1034,7 @@ class Cloth:
             prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
             dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
             """
+            
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
                 F_mu = self.computeFrictionCorrection(phi + dlt_phi,dlt_phi)
@@ -1281,6 +1284,8 @@ class Cloth:
 
                 #iteration count 
                 n_iter += 1
+
+            print(n_iter)
 
             if self.table is True:
                 phi = self.tableCollisions(phi)

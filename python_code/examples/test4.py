@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 # Caida libre
-na = 15; nb = 15
+na = 25; nb = 25
 m = np.int32(np.floor(na/2))
 np.random.seed(1)
 X, Q, T = createRectangularMesh(a = 0.6, b = 0.6, na = na, nb = nb, h = 0.1)
@@ -17,11 +17,11 @@ X[:,2] += 0.4;
 X += 0.0002*np.random.randn(X.shape[0],3) 
 
 self = Cloth(X,Q,T); 
-dt = 1/600
-self.setSimulatorParameters(dt=dt,tol=0.005, 
+dt = 1/60
+self.setSimulatorParameters(dt=dt,tol=0.0075, 
                             rho=0.1,delta=0.1,kappa=0.25*1e-4,shr=0.5*1e-4, kappa_bnd = 0.025*1e-4,
-                            str=0.001*1e-4,alpha=0.2,mu_f=0.3,mu_s=0.3,thck=0.9,sub_steps=1,slf=0*1e-4)
-tf = int(1.5/dt)
+                            str=0.001*1e-4,alpha=0.2,mu_f=0.3,mu_s=0.3,thck=0.9,sub_steps=8,slf=0*1e-4)
+tf = int(5/dt)
 print(tf)
 self.plotMesh()
 inds = [m, nb*na - m-1]
@@ -29,7 +29,7 @@ u = self.positions[inds]
 start_time = time.time()
 for i in range(tf):
     print("Iteration: ",i)
-    if i == -int(280):
+    if i == int(tf/2):
         inds = [0]
         u = self.positions[inds]
     self.simulate(u = u, control = inds)
@@ -38,5 +38,5 @@ print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 
-self.makeMovie(speed = 3, repeat = False, smooth = 0)
+self.makeMovie(speed = 1, repeat = False, smooth = 0)
 #kernprof -l -v test4.py > perfil_selfcols4.txt

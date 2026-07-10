@@ -192,8 +192,8 @@ class Cloth:
             col = np.concatenate((self.e0, self.e1,self.n_verts+aux_e))
             data = np.concatenate((0.5*ones,0.5*ones,-ones))
             self.Em = sp.coo_matrix((data, (row, col)), shape=(self.n_edges, self.n_verts+self.n_edges)).tocsc()
-            self.EmT = self.Em.T.tocsr()
-            self.factor_Em = cholesky_AAt(self.Em, beta = 0) 
+            #self.EmT = self.Em.T.tocsr()
+            #self.factor_Em = cholesky_AAt(self.Em, beta = 0) 
 
 
     def buildAdjacencyMatrices(self):
@@ -282,6 +282,8 @@ class Cloth:
             M, L = self.precomputeMatrix(self.faces)
             # lumped mass matrices and inverses
             m_lum = M.sum(axis = 1)  #lumping the mass matrix in vector form
+            m_lum_all = np.concatenate([m_lum,0.5*(m_lum[self.e0] + m_lum[self.e1])])
+            self.w_all = 1.0/m_lum_all
             m_inv = np.array([1./x for x in m_lum])  # inverse of the lumped mass matrix
             m_sqrt = np.array([1./np.sqrt(x) for x in m_lum])  # inverse of the root of the lumped mass matrix
             #save matrices
@@ -289,6 +291,14 @@ class Cloth:
             self.M = M_lum #use only the lumped version
             M_inv = sp.diags(m_inv).tocsc()
             self.K = L.T@ M_inv@ L # stiffness matrix from laplacian
+
+            
+            #matrix for middle edges
+            self.sqrt_w_all = np.sqrt(self.w_all)
+            Wsqrt = sp.diags(self.sqrt_w_all, format="csc")
+            self.Em = self.Em@Wsqrt
+            self.EmT = self.Em.T.tocsr()
+            self.factor_Em = cholesky_AAt(self.Em, beta = 0)
 
             # save the results for three dimensions xyz
             #self.M_inv = sp.block_diag((M_inv, M_inv, M_inv))
@@ -986,7 +996,7 @@ class Cloth:
         #averages
         avg = 1/(count + 1e-12); avg[count == 0] = 0; 
         #mass inverses: set controled to zero
-        w = np.concatenate([self.m_inv, 0.5*(self.m_inv[self.e0] + self.m_inv[self.e1])])
+        w = self.w_all.copy()
         w[self.control] = 0
         wa  = (avg*w)[:,np.newaxis]      
         #rads = self.rads[self.ind_slf]      
@@ -1036,15 +1046,16 @@ class Cloth:
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_slf/(2*self.rad)) < self.tol)[0]
             self.ind_slf = self.unionMask(self.ind_slf,ind_s)
-            print('considered constraints: ',self.ind_slf.shape[0])
+            #print('considered constraints: ',self.ind_slf.shape[0])
             #correction for positions
             dlt_phi = self.solveLCP(max_iters)
             phi_prv = self.getExtendedMesh(phi) + dlt_phi
 
             #project into valid space
-            res = self.Em @ phi_prv 
+            phi_v = phi_prv[:self.n_verts]; phi_e = phi_prv[self.n_verts:]
+            res = 0.5*(phi_v[self.e0] + phi_v[self.e1]) - phi_e
             lmbds = self.factor_Em(res)
-            dlt = -self.EmT@lmbds
+            dlt = -self.sqrt_w_all[:,np.newaxis]*(self.EmT@lmbds)
             #phi_mod = phi_all + dlt
             #print(np.max(np.max(np.abs(self.Em @ phi_mod))))
             dlt_tot = ((dlt_phi + dlt)[:self.n_verts]).flatten(order='F')

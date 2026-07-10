@@ -1069,7 +1069,7 @@ class Cloth:
         self.ind_slf_ee = ind[keep]
     
     @profile
-    def selfCollisions(self,phi,n_iter,s,max_iters=100):    
+    def selfCollisions(self,phi,n_iter,s,max_iters=50):    
         if n_iter == 0:
             #precompute objects for selfcollisions
             self.prepareCollisions(phi)   
