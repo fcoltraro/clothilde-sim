@@ -781,8 +781,8 @@ class Cloth:
         pairs = np.sort(pairs, axis=1)
         pairs = np.unique(pairs, axis=0)
         #reduce their collision radious in half
-        matrix_rads[pairs[:,0],pairs[:,1]] = 0.6*matrix_rads[pairs[:,0],pairs[:,1]]
-        matrix_rads[pairs[:,1],pairs[:,0]] = 0.6*matrix_rads[pairs[:,1],pairs[:,0]]
+        #matrix_rads[pairs[:,0],pairs[:,1]] = 0.6*matrix_rads[pairs[:,0],pairs[:,1]]
+        #matrix_rads[pairs[:,1],pairs[:,0]] = 0.6*matrix_rads[pairs[:,1],pairs[:,0]]
 
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
@@ -817,7 +817,7 @@ class Cloth:
 
         #self-collision parameters
         self.thck = thck
-        self.mov_tol = 0.025 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
+        self.mov_tol = 0.02 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
         self.max_mov = max_mov #between 0 and 1 fraction of mean edge length that the control nodes can move in one time step
         self.computeRadiouses()
         self.eps_sus = 3.3*self.rad #threshold for detecting close balls in computeClosePairs()
@@ -990,11 +990,13 @@ class Cloth:
             #correction for positions
             dlt_phi = self.solveLCP(max_iters)
             
+            """
             #lets project into stretch space
             b = -self.stretch.grad@dlt_phi
             dlt_lambda = self.stretch.factor(b)
             prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
             dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
+            """
             
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
@@ -1109,6 +1111,7 @@ class Cloth:
         self.ind_slf = self.empty
         #store if floor collisions have happened
         self.flr = True
+        #self.rads = self.matrix_rads[self.near_nn0,self.near_nn1]
     
     def projectControl(self,phi,u_mat,control,n_ctr):
         if n_ctr > 0:
