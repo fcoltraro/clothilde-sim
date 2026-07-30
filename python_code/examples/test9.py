@@ -3,13 +3,13 @@ notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
 from implementation.Cloth import Cloth 
-from implementation.utils import createRectangularMesh, duplicate_node_pairs
+from implementation.utils import createRectangularMesh, duplicate_node_pairs, weld_quad_mesh
 import numpy as np
 np.set_printoptions(threshold=sys.maxsize)
 import time
 
 # Caida libre
-na = 23; nb = 19
+na = 20; nb = 20
 np.random.seed(10)
 X, T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.75)
 X[:,2] = (1 - np.exp(3*(X[:,1]-0.5)))*X[:,2]
@@ -19,15 +19,17 @@ Y = X.copy();
 Y[:,2] = -Y[:,2]
 X = np.concatenate([X,Y]); T = np.concatenate([T,T+na*nb])
 
-seam = duplicate_node_pairs(X)
-print(seam.shape)
+X,T,_,_ = weld_quad_mesh(X,T)
+
+#seam = duplicate_node_pairs(X)
+#print(seam.shape)
 X[:,2] += 1.8; 
 #X += 0.0002*np.random.randn(X.shape[0],3) 
 
 
-self = Cloth(X, T, seam); 
+self = Cloth(X, T); 
 dt = 1/60
-self.setSimulatorParameters(dt = dt, thck = 0.99, mu_s = 0.35, str = 0.001*1e-4, shr = 2.5*1e-4, 
+self.setSimulatorParameters(dt = dt, thck = 1, mu_s = 0.15, str = 0.001*1e-4, shr = 10*1e-4, 
                             tol = 0.0075, kappa = 1.5*1e-4, kappa_bnd = 0.5*1e-4,  mu_f = 0.25, sub_steps = 10)
 print(self.corners)
 self.plotMesh()
@@ -48,4 +50,4 @@ for i in range(tf):
 print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
-self.makeMovie(speed=1,repeat=True,smooth=2)
+self.makeMovie(speed=1,repeat=False,smooth=2)

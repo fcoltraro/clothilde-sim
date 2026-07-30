@@ -26,12 +26,12 @@ X += 0.0002*np.random.randn(X.shape[0],3)
 
 self = Cloth(X, T, seam); 
 dt = 1/60
-self.setSimulatorParameters(dt = dt, thck = 0.99, mu_s = 0.35, str = 0.005*1e-4, shr = 20*1e-4, 
-                            tol = 0.0075, kappa = 1*1e-4,kappa_bnd = 1*1e-4, mu_f = 0.2)
+self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.3, str = 0.005*1e-4, shr = 20*1e-4, 
+                            tol = 0.0075, kappa = 1*1e-4,kappa_bnd = 0.1*1e-4, mu_f = 0.2)
 self.plotMesh()
 
-tf = int(2.5/dt); t = np.linspace(0,2*np.pi,tf); freq = 3
-inds_ctr = [170]
+tf = int(5/dt); t = np.linspace(0,2*np.pi,tf); freq = 3
+inds_ctr = [0]
 u = X[inds_ctr]
 
 start_time = time.time()
@@ -40,7 +40,7 @@ for i in range(tf):
 u = self.positions[inds_ctr]; 
 inds_ctr = []
 u = self.positions[inds_ctr]; 
-for i in range(tf):
+for i in range(0*tf):
     self.simulate(u = u, control = inds_ctr)
 
 print('Time:',time.time()-start_time)

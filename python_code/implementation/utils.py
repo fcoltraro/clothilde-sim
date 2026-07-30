@@ -117,3 +117,85 @@ def duplicate_node_pairs(X, tol=1e-9):
     pairs.sort(axis=1)  # ensure (i, j) with i < j
     return pairs
 
+import numpy as np
+
+
+def weld_quad_mesh(X, T, tol=1e-10, remove_degenerate=True):
+    """
+    Merge coincident vertices of a quadrilateral mesh.
+
+    Parameters
+    ----------
+    X : (n, d) ndarray
+        Vertex coordinates.
+    T : (m, 4) ndarray of int
+        Quadrilateral connectivity.
+    tol : float
+        Two vertices are merged when their coordinates agree up to this
+        spatial tolerance.
+    remove_degenerate : bool
+        Remove quads that contain repeated vertices after welding.
+
+    Returns
+    -------
+    X_clean : (n_clean, d) ndarray
+        Welded vertex coordinates.
+    T_clean : (m_clean, 4) ndarray
+        Remapped quadrilateral connectivity.
+    old_to_new : (n,) ndarray
+        old_to_new[i] is the new index corresponding to old vertex i.
+    groups : list[list[int]]
+        Original vertices merged into each cleaned vertex.
+    """
+
+    X = np.asarray(X)
+    T = np.asarray(T, dtype=int)
+
+    if X.ndim != 2:
+        raise ValueError("X must have shape (n_vertices, dimension).")
+
+    if T.ndim != 2 or T.shape[1] != 4:
+        raise ValueError("T must have shape (n_quads, 4).")
+
+    if np.any(T < 0) or np.any(T >= len(X)):
+        raise ValueError("T contains invalid vertex indices.")
+
+    if tol <= 0:
+        raise ValueError("tol must be positive.")
+
+    # Quantize coordinates so nearby points receive the same key.
+    keys = np.round(X / tol).astype(np.int64)
+
+    _, first_indices, inverse = np.unique(
+        keys,
+        axis=0,
+        return_index=True,
+        return_inverse=True,
+    )
+
+    # np.unique sorts the keys, so the resulting order is not necessarily
+    # the order of first appearance. Reorder cleaned vertices by first use.
+    order = np.argsort(first_indices)
+    inverse_order = np.empty_like(order)
+    inverse_order[order] = np.arange(len(order))
+
+    old_to_new = inverse_order[inverse]
+
+    representative_indices = first_indices[order]
+    X_clean = X[representative_indices].copy()
+    T_clean = old_to_new[T]
+
+    groups = [[] for _ in range(len(X_clean))]
+    for old_index, new_index in enumerate(old_to_new):
+        groups[new_index].append(old_index)
+
+    if remove_degenerate:
+        # A valid quadrilateral must still have four distinct vertices.
+        valid = np.array(
+            [len(np.unique(quad)) == 4 for quad in T_clean],
+            dtype=bool,
+        )
+        T_clean = T_clean[valid]
+
+    return X_clean, T_clean, old_to_new, groups
+
