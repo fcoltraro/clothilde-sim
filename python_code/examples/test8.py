@@ -9,7 +9,7 @@ np.set_printoptions(threshold=sys.maxsize)
 import time
 
 # Caida libre
-na = 20; nb = 20
+na = 30; nb = 30
 np.random.seed(10)
 X, T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.75)
 
@@ -27,7 +27,7 @@ X += 0.0002*np.random.randn(X.shape[0],3)
 self = Cloth(X, T, seam); 
 dt = 1/60
 self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.3, str = 0.005*1e-4, shr = 20*1e-4, 
-                            tol = 0.0075, kappa = 1*1e-4,kappa_bnd = 0.1*1e-4, mu_f = 0.2)
+                            tol = 0.0075, kappa = 1*1e-4, kappa_bnd = 0.1*1e-4, mu_f = 0.2)
 self.plotMesh()
 
 tf = int(5/dt); t = np.linspace(0,2*np.pi,tf); freq = 3

@@ -9,7 +9,7 @@ np.set_printoptions(threshold=sys.maxsize)
 import time
 
 # Caida libre
-na = 20; nb = 20
+na = 25; nb = 25
 np.random.seed(10)
 X, T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.75)
 X[:,2] = (1 - np.exp(3*(X[:,1]-0.5)))*X[:,2]
@@ -19,22 +19,22 @@ Y = X.copy();
 Y[:,2] = -Y[:,2]
 X = np.concatenate([X,Y]); T = np.concatenate([T,T+na*nb])
 
-X,T,_,_ = weld_quad_mesh(X,T)
+#X,T,_,_ = weld_quad_mesh(X,T)
 
-#seam = duplicate_node_pairs(X)
+seam = duplicate_node_pairs(X)
 #print(seam.shape)
 X[:,2] += 1.8; 
 #X += 0.0002*np.random.randn(X.shape[0],3) 
 
 
-self = Cloth(X, T); 
+self = Cloth(X, T, seam); 
 dt = 1/60
-self.setSimulatorParameters(dt = dt, thck = 1, mu_s = 0.15, str = 0.001*1e-4, shr = 10*1e-4, 
+self.setSimulatorParameters(dt = dt, thck = 1, mu_s = 0.35, str = 0.001*1e-4, shr = 10*1e-4, 
                             tol = 0.0075, kappa = 1.5*1e-4, kappa_bnd = 0.5*1e-4,  mu_f = 0.25, sub_steps = 10)
 print(self.corners)
 self.plotMesh()
 
-tf = int(3/dt); t = np.linspace(0,2*np.pi,tf); freq = 2
+tf = int(4/dt); t = np.linspace(0,2*np.pi,tf); freq = 2
 inds_ctr = [0]
 u = X[inds_ctr]
 
@@ -44,10 +44,10 @@ for i in range(tf):
 u = self.positions[inds_ctr]; 
 inds_ctr = []
 u = self.positions[inds_ctr]; 
-for i in range(tf):
+for i in range(0*tf):
     self.simulate(u = u, control = inds_ctr)
 
 print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
-self.makeMovie(speed=1,repeat=False,smooth=2)
+self.makeMovie(speed=1,repeat=True,smooth=2)
