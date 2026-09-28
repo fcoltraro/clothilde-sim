@@ -286,22 +286,54 @@ class SimulateGripper:
         self.visible_history.append(True)
         self.grasp_history.append(grasp_now)
                 
-    def step(self):
-        # step is called on every callback frame, hence the target positions for the grasped nodes
-        # are sent to the solver every frame, not once. Thus, gradual squeezing can be done
-        # to avoid sudden jumping: from local_points_rest to local_points_goal.
-        if (not self.is_open) and len(self.controlled) > 0:
-            if self.squeeze_alpha < 1.0:
-                self.squeeze_alpha = min(1.0, self.squeeze_alpha + self.squeeze_alpha_step)
-                # a = 0.15, next step, a = min(1.0, 0.15 + 0.10) = 0.25, next step, a = 0.35, ...
-                a = self.squeeze_alpha
-                # changing self.local_points every frame, even though self.controlled does not change.
-                self.local_points = (1.0 - a) * self.local_points_rest + a * self.local_points_goal
+    # def step(self):
+    #     # step is called on every callback frame, hence the target positions for the grasped nodes
+    #     # are sent to the solver every frame, not once. Thus, gradual squeezing can be done
+    #     # to avoid sudden jumping: from local_points_rest to local_points_goal.
+    #     if (not self.is_open) and len(self.controlled) > 0:
+    #         if self.squeeze_alpha < 1.0:
+    #             self.squeeze_alpha = min(1.0, self.squeeze_alpha + self.squeeze_alpha_step)
+    #             # a = 0.15, next step, a = min(1.0, 0.15 + 0.10) = 0.25, next step, a = 0.35, ...
+    #             a = self.squeeze_alpha
+    #             # changing self.local_points every frame, even though self.controlled does not change.
+    #             self.local_points = (1.0 - a) * self.local_points_rest + a * self.local_points_goal
 
-            u = quat_transform_points(self.p, self.q, self.local_points)
-            self.cloth.simulate(u=u, control=self.controlled)
-        else:
+    #         u = quat_transform_points(self.p, self.q, self.local_points)
+    #         self.cloth.simulate(u=u, control=self.controlled)
+    #     else:
+    #         self.cloth.simulate(u=np.zeros((0, 3)), control=[])
+
+    #     self.record_history()
+    
+    def step(self, grippers):
+        control_all = []
+        u_all = []
+
+        for g in grippers:
+            if (not g.is_open) and len(g.controlled) > 0:
+                if g.squeeze_alpha < 1.0:
+                    g.squeeze_alpha = min(1.0, g.squeeze_alpha + g.squeeze_alpha_step)
+                    a = g.squeeze_alpha
+                    g.local_points = (
+                        (1.0 - a) * g.local_points_rest
+                        + a * g.local_points_goal
+                    )
+
+                u = quat_transform_points(g.p, g.q, g.local_points)
+
+                control_all.extend(g.controlled)
+                u_all.append(u)
+
+            g.record_history()
+
+        if len(control_all) == 0:
             self.cloth.simulate(u=np.zeros((0, 3)), control=[])
+            return
 
-        self.record_history()
+        u_all = np.vstack(u_all)
+
+        self.cloth.simulate(
+            u=u_all,
+            control=[int(i) for i in control_all]
+        )
         

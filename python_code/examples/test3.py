@@ -2,7 +2,7 @@ import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
-from implementation.Cloth import Cloth 
+from implementation.Cloth_speed import Cloth 
 from implementation.utils import createRectangularMesh
 import numpy as np
 #np.set_printoptions(threshold=sys.maxsize)
@@ -31,7 +31,7 @@ tf = int(2.5/dt)
 t = np.linspace(0,2*np.pi,tf)
 inds = [0]
 u0 = u = self.positions[inds]
-for j in range(tf):    
+for j in range(0*tf):    
     u[:,2] = u0[:,2] + 0.01*np.sin(2*t[j])
     self.simulate(u = u, control = inds)
 tf = int(3/dt)
@@ -42,6 +42,7 @@ for k in range(tf):
 
 print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
+print(self.positions[0])
 
 
 self.makeMovie(speed = 1, repeat = True, smooth = 2)

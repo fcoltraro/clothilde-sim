@@ -1,0 +1,2 @@
+dt,tol,sub_steps,rho,delta,alpha,kappa,kappa_bnd,str,shr,slf,mu_f,mu_s,thck
+0.01666667,0.008,8,0.1,0.1,0.3,0.0001,1E-05,0.0001,0.0002,0.0001,0.2,0.5,1.2

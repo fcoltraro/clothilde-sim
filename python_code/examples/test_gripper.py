@@ -63,10 +63,18 @@ p0 = grip.p.copy()
 
 ### helper functions
 follow_offset = None
-follow_enabled = False
+follow_gripper = False
+enable_squeeze = True
+
+# ## To take a video of the squeeze upclose
+# cam_pos0 = [0.56056285, 0.05528575, 0.32535148]
+# target = [-0.5492229,  -0.73250985, -0.40222338]
+# up_dir = [-0.24128917, -0.32181233,  0.91554165]
+# ps.look_at_dir(cam_pos0, target, up_dir)
+# ###
 
 def enable_follow_camera():
-    global follow_enabled, follow_target, follow_offset
+    global follow_gripper, follow_target, follow_offset
 
     cam = ps.get_view_camera_parameters()
     cam_pos = cam.get_position()
@@ -77,10 +85,10 @@ def enable_follow_camera():
     # save current offset from gripper
     follow_offset = cam_pos - grip.p
     follow_target = target - grip.p
-    follow_enabled = True
+    follow_gripper = True
 
 def follow_gripper_camera():
-    if not follow_enabled:
+    if not follow_gripper:
         return
 
     cam_pos = grip.p + follow_offset
@@ -192,7 +200,7 @@ def update_scene():
     # So that the grasped node is in between the jaws
     if len(grip.controlled) > 0:
         ctrl = np.asarray(grip.controlled, dtype=int)
-        phi_all[ctrl] = phi_mat[ctrl]
+        # phi_all[ctrl] = phi_mat[ctrl]
 
     ps.get_surface_mesh(cloth.label).update_vertex_positions(phi_all)
     ps.get_point_cloud(cloth.label).update_point_positions(phi_mat)
@@ -228,11 +236,12 @@ def update_scene():
     except:
         pass
 
-    origin = np.asarray(grip.p, dtype=float).reshape(1, 3)
-    pc = ps.register_point_cloud("gripper_frame_live", origin, radius=0.005)
-    pc.add_vector_quantity("x", (0.08 * R[:, 0]).reshape(1, 3), vectortype="ambient", enabled=True, color=[1.0, 0.0, 0.0])
-    pc.add_vector_quantity("y", (0.08 * R[:, 1]).reshape(1, 3), vectortype="ambient", enabled=True, color=[0.0, 1.0, 0.0])
-    pc.add_vector_quantity("z", (0.08 * R[:, 2]).reshape(1, 3), vectortype="ambient", enabled=True, color=[0.0, 0.0, 1.0])
+    # origin = np.asarray(grip.p, dtype=float).reshape(1, 3)
+    origin = np.asarray(grip.p + R @ tip_center_local, dtype=float).reshape(1, 3)
+    pc = ps.register_point_cloud("gripper_frame_live", origin, radius=0.002, color=[0.0, 0.0, 0.0])
+    pc.add_vector_quantity("x", (0.01 * R[:, 0]).reshape(1, 3), vectortype="ambient", radius=0.001, enabled=True, color=[1.0, 0.0, 0.0])
+    pc.add_vector_quantity("y", (0.01 * R[:, 1]).reshape(1, 3), vectortype="ambient", radius=0.001, enabled=True, color=[0.0, 1.0, 0.0])
+    pc.add_vector_quantity("z", (0.015 * R[:, 2]).reshape(1, 3), vectortype="ambient", radius=0.001, enabled=True, color=[0.0, 0.0, 1.0])
     
     # try:
     #     ps.remove_structure("grasped_nodes")
@@ -252,7 +261,7 @@ def update_scene():
 
 def callback():
     global gripper_pos, rotvec, jaw_open, jaw_gap_open, jaw_gap_closed
-    global tip_center_local, grasp_box, follow_enabled, smooth
+    global tip_center_local, grasp_box, follow_gripper, smooth, enable_squeeze
     
     psim.TextUnformatted("Gripper control")
 
@@ -269,7 +278,7 @@ def callback():
 
     grip.set_pose(q, gripper_pos)
 
-    grip.set_open(is_open=jaw_open, smooth=smooth, box=grasp_box, center_local=tip_center_local)
+    grip.set_open(is_open=jaw_open, smooth=smooth, box=grasp_box, center_local=tip_center_local, squeeze_enabled=enable_squeeze)
 
     psim.TextUnformatted(f"Grasped nodes = {grip.controlled}")
 
@@ -278,24 +287,39 @@ def callback():
 
     psim.TextUnformatted("Camera Controls")
 
-    changed, follow_enabled_new = psim.Checkbox(
+    changed, follow_gripper_new = psim.Checkbox(
         "Follow Camera",
-        follow_enabled
+        follow_gripper
     )
+    changed_squeeze, squeeze_new = psim.Checkbox(
+            "Enable Squeeze",
+            enable_squeeze
+        )
+    if changed_squeeze:
+        enable_squeeze = squeeze_new
 
     # checkbox was toggled
     if changed:
         # only when turning ON
-        if follow_enabled_new and not follow_enabled:
+        if follow_gripper_new and not follow_gripper:
             enable_follow_camera()
 
-        follow_enabled = follow_enabled_new
+        follow_gripper = follow_gripper_new
 
     # keep following if enabled
-    if follow_enabled:
+    if follow_gripper:
         follow_gripper_camera()
 
     update_scene()
 
 ps.set_user_callback(callback)
 ps.show()
+
+# ## To get the video of squeeze
+# cam = ps.get_view_camera_parameters()
+# cam_pos = cam.get_position()
+# look_dir = cam.get_look_dir()
+# up_dir = cam.get_up_dir()
+
+# print(cam_pos, look_dir, up_dir)
+# ####

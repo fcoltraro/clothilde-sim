@@ -81,3 +81,6 @@ class UnityClothWithGripper:
     
     def getPhysicalPositionsUnity(self):
         return self.cloth.positions.tolist()
+    
+    def get_raw_velocities(self):
+        return self.cloth.velocities.tolist()

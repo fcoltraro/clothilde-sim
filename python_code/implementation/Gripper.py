@@ -1,29 +1,8 @@
 # Cloth.py handles all the physics
-# This file provides kinematic boundary condition on some grasped nodes
+# This file provides kinematic boundary conditions on some grasped nodes
 
 import numpy as np
 from implementation.Cloth import Cloth
-
-bbox_edges = np.array([
-    [0,1], [1,2], [2,3], [3,0],   # bottom
-    [4,5], [5,6], [6,7], [7,4],   # top
-    [0,4], [1,5], [2,6], [3,7],   # verticals
-], dtype=int)
-
-def make_aabb_vertices_local(face_min, face_max):
-    xmin, ymin, zmin = face_min
-    xmax, ymax, zmax = face_max
-
-    return np.array([
-        [xmin, ymin, zmin],
-        [xmax, ymin, zmin],
-        [xmax, ymax, zmin],
-        [xmin, ymax, zmin],
-        [xmin, ymin, zmax],
-        [xmax, ymin, zmax],
-        [xmax, ymax, zmax],
-        [xmin, ymax, zmax],
-    ], dtype=float)
 
 # =========================
 # Quaternion utilities
@@ -132,7 +111,8 @@ class SimulateGripper:
         # squeeze attributes
         self.local_points_rest = np.zeros((0, 3), dtype=float)
         self.local_points_goal = np.zeros((0, 3), dtype=float)
-        self.squeeze_alpha = 1.0 # changed to 0
+        # self.squeeze_enabled = True
+        self.squeeze_alpha = 1.0 
         self.squeeze_alpha_step = 0.1   # smaller = safer
         self.squeeze_amount = 0.50
 
@@ -165,6 +145,7 @@ class SimulateGripper:
 
         n_nodes = self.cloth.positions.shape[0]
         Xw_nodes = phi_all[:n_nodes]
+        Xw_nodes = self.cloth.positions
 
         # Xw_nodes = self.cloth.positions
         Xl_nodes = quat_inverse_transform_points(self.p, self.q, Xw_nodes)
@@ -229,7 +210,10 @@ class SimulateGripper:
         return sorted(support)
 
     
-    def set_open(self, is_open, smooth, box=None, center_local=None):
+    def set_open(self, is_open, smooth, box=None, center_local=None, squeeze_enabled=True):
+
+        # squeeze_enabled = self.squeeze_enabled
+        # self.squeeze_alpha = 0.0 if squeeze_enabled else 1.0 
 
         is_open = bool(is_open)
 
@@ -242,7 +226,19 @@ class SimulateGripper:
             # print(f'grasped nodes: {inds}') # only print when changing from open to closed
             if len(inds) > 0:
                 self.controlled = inds
-                Xw = self.cloth.positions[self.controlled].copy()
+                # Xw = self.cloth.positions[self.controlled].copy()
+                # Xl = quat_inverse_transform_points(self.p, self.q, Xw)
+                
+                phi_mat = self.cloth.positions
+                phi_all = self.cloth.Am @ phi_mat
+
+                for _ in range(smooth):
+                    phi_all = self.cloth.S @ phi_all
+
+                n_nodes = self.cloth.positions.shape[0]
+                Xw_smooth_nodes = phi_all[:n_nodes]
+
+                Xw = Xw_smooth_nodes[self.controlled].copy()
                 Xl = quat_inverse_transform_points(self.p, self.q, Xw)
 
                 # store unsqueezed grasp points
@@ -251,23 +247,26 @@ class SimulateGripper:
                 # make a safe squeezed target for ALL grasped nodes
                 Xl_goal = Xl.copy()
 
-                dx = center_local[0] - Xl_goal[:, 0]
-                dx *= self.squeeze_amount      # move only 50% toward center in gripper x
-                # dx = np.clip(dx, -0.002, 0.002)  # cap to 2 mm per node
-                Xl_goal[:, 0] += dx
+                if squeeze_enabled:
+                    print(f'Squeeze is enabled')
+                    dx = center_local[0] - Xl_goal[:, 0]
+                    dx *= self.squeeze_amount      # move only 50% toward center in gripper x
+                    # dx = np.clip(dx, -0.002, 0.002)  # cap to 2 mm per node
+                    Xl_goal[:, 0] += dx
 
-                Xl_goal[:, 2] += 0.0002       # tiny lift to reduce sudden jump
+                    Xl_goal[:, 2] += 0.0002       # tiny lift to reduce sudden jump
+                    
+                    self.squeeze_alpha = 0.0
 
-                self.local_points_goal = Xl_goal
+                self.local_points_goal = Xl_goal.copy()
                 self.local_points = self.local_points_rest.copy()
-                self.squeeze_alpha = 0.0
 
             else:
                 self.controlled = []
                 self.local_points = np.zeros((0, 3))
                 self.local_points_rest = np.zeros((0, 3))
                 self.local_points_goal = np.zeros((0, 3))
-                self.squeeze_alpha = 0.0 # changed to 0
+                self.squeeze_alpha = 0.0
 
         # closed -> open : release
         elif (not was_open) and self.is_open:
@@ -305,31 +304,40 @@ class SimulateGripper:
 
     #     self.record_history()
         
-    def step(self):
-        # Called every Unity frame. Python receives the current gripper pose from Unity.
-        # If the gripper is closed and has grasped nodes, Python computes
-        # the desired controlled-node positions and advances the cloth simulation.
-        self.last_controlled = []
-        self.last_u = np.zeros((0, 3), dtype=float)
-        if (not self.is_open) and len(self.controlled) > 0:
-            if self.squeeze_alpha < 1.0:
-                self.squeeze_alpha = min(1.0, self.squeeze_alpha + self.squeeze_alpha_step)
-                # a = 0.15, next step, a = min(1.0, 0.15 + 0.10) = 0.25, next step, a = 0.35, ...
-                a = self.squeeze_alpha
-                # changing self.local_points every frame, even though self.controlled does not change.
-                self.local_points = (1.0 - a) * self.local_points_rest + a * self.local_points_goal
+    def step(self, grippers=None):
+        if grippers is None:
+            grippers = [self]
 
-            u = quat_transform_points(self.p, self.q, self.local_points)
-            self.last_controlled = list(self.controlled)
-            self.last_u = u.copy()
-            
-            self.cloth.simulate(u=u, control=self.controlled)
-        else:
+        control_all = []
+        u_all = []
+
+        for g in grippers:
+            if (not g.is_open) and len(g.controlled) > 0:
+                if g.squeeze_alpha < 1.0:
+                    g.squeeze_alpha = min(1.0, g.squeeze_alpha + g.squeeze_alpha_step)
+                    a = g.squeeze_alpha
+                    g.local_points = (
+                        (1.0 - a) * g.local_points_rest
+                        + a * g.local_points_goal
+                    )
+
+                u = quat_transform_points(g.p, g.q, g.local_points)
+
+                control_all.extend(g.controlled)
+                u_all.append(u)
+
+            g.record_history()
+
+        if len(control_all) == 0:
             self.cloth.simulate(u=np.zeros((0, 3)), control=[])
+            return
 
-        self.record_history()
-        
-        return self.last_controlled, self.last_u
+        u_all = np.vstack(u_all)
+
+        self.cloth.simulate(
+            u=u_all,
+            control=[int(i) for i in control_all]
+        )
 
 """
 The best long-term formulation is:
