@@ -13,7 +13,7 @@ na = 20; nb = 30
 # na = 4; nb = 7
 np.random.seed(1)
 X, T = createRectangularMesh(a = 0.8, b = 0.8, na = na, nb = nb, h = 0.1)
-X[:,2] += 0.9; 
+X[:,2] += 0.5; 
 X += 0.0001*np.random.randn(X.shape[0],3) 
 
 self = Cloth(X, T); 
