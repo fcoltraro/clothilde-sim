@@ -2,6 +2,8 @@ import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
+sys.path.append(parent_dir + "/python_code")
+
 from implementation.Cloth import Cloth 
 from implementation.utils import createRectangularMesh
 import numpy as np
@@ -48,5 +50,5 @@ print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 
-self.makeMovie(speed = 5, repeat = False, smooth = 2)
+self.makeMovie(speed = 5, repeat = True, smooth = 2)
 #kernprof -l -v test3.py > perfil_selfcols3.txt

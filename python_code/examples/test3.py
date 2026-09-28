@@ -2,11 +2,14 @@ import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
-from implementation.Cloth_speed import Cloth 
+sys.path.append(parent_dir + "/python_code")
+from implementation.Cloth import Cloth 
 from implementation.utils import createRectangularMesh
 import numpy as np
 #np.set_printoptions(threshold=sys.maxsize)
 import time
+
+from tqdm import tqdm
 
 # Caida libre
 n = 27; na = n; nb = n
@@ -30,9 +33,11 @@ for i in range(tf):
 tf = int(2.5/dt)
 t = np.linspace(0,2*np.pi,tf)
 inds = [0]
-u0 = u = self.positions[inds]
-for j in range(0*tf):    
-    u[:,2] = u0[:,2] + 0.01*np.sin(2*t[j])
+
+for j in tqdm(range(tf), desc="Simulating", unit="step"):
+    #print("iteration :",j)
+    u = self.positions[inds]
+    u[:,2] += 0.004*np.sin(2*t[j])
     self.simulate(u = u, control = inds)
 tf = int(3/dt)
 inds = []

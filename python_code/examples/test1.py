@@ -1,7 +1,7 @@
 import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
-sys.path.append(parent_dir)
+sys.path.append(parent_dir + "/python_code")
 from implementation.Cloth import Cloth
 from implementation.utils import createRectangularMesh
 import numpy as np
@@ -9,7 +9,8 @@ np.set_printoptions(threshold=sys.maxsize)
 import time
 
 # Caida libre
-na = 30; nb = 30
+na = 20; nb = 30
+# na = 4; nb = 7
 np.random.seed(1)
 X, T = createRectangularMesh(a = 0.8, b = 0.8, na = na, nb = nb, h = 0.1)
 X[:,2] += 0.9; 
@@ -33,8 +34,7 @@ for i in range(tf):
 print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
-
-self.makeMovie(speed = 1, repeat = True, smooth = 2)
+self.makeMovie(speed = 6, repeat = True, smooth = 2)
 #self.plotMesh()
 #self.saveFrames(speed = 4)
 

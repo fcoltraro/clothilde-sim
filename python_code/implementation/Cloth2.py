@@ -95,7 +95,6 @@ class Cloth:
         #controled nodes
         self.control = [] #for precomputing cholesky factorizations and only updating when necessary
         self.Iu = self.empty; self.Ju = self.empty; self.Ku = self.empty
-        self.share_control = np.zeros((self.n_verts, self.n_verts), dtype=bool)
 
         #compute all the necesary elements for simulation only once
         self.prepareSimulation()
@@ -669,7 +668,7 @@ class Cloth:
                    ps.clear_user_callback()
 
         ps.set_user_callback(goThroughHistory)
-        ps.show()
+        # ps.show()
         ps.clear_user_callback()
 
 
@@ -714,7 +713,6 @@ class Cloth:
         diag1 = self.computeNorm(self.positions[d1]-self.positions[d3])
         #constant radious of the balls
         self.rad = self.thck*np.mean(longs)/2.05
-        self.max_step = self.max_mov*np.mean(longs)
 
         #matrix of radiouses
         matrix_rads = 2*self.rad*np.ones((self.n_verts,self.n_verts),dtype=float)
@@ -726,48 +724,17 @@ class Cloth:
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
-
-        #edges that share a node
-        S = self.A0 @ self.A0.T
-        ei, ej = S.nonzero()
-        # avoids duplicates and self-pairs
-        mask = ei < ej          
-        ei = ei[mask]
-        ej = ej[mask]
-        # find endpoints that are not shared
-        e0 = self.edges_matrix[ei]
-        e1 = self.edges_matrix[ej]
-        same00 = e0[:, 0] == e1[:, 0]
-        same01 = e0[:, 0] == e1[:, 1]
-        same10 = e0[:, 1] == e1[:, 0]
-        same11 = e0[:, 1] == e1[:, 1]
-        #take the opposites
-        pairs = np.empty((len(ei), 2), dtype=self.edges_matrix.dtype)
-        pairs[same00] = np.column_stack([e0[same00, 1], e1[same00, 1]])
-        pairs[same01] = np.column_stack([e0[same01, 1], e1[same01, 0]])
-        pairs[same10] = np.column_stack([e0[same10, 0], e1[same10, 1]])
-        pairs[same11] = np.column_stack([e0[same11, 0], e1[same11, 0]])
-        #make the pair of nodes unique
-        pairs = np.sort(pairs, axis=1)
-        pairs = np.unique(pairs, axis=0)
-        #reduce their collision radious in half
-        matrix_rads[pairs[:,0],pairs[:,1]] = 0.6*matrix_rads[pairs[:,0],pairs[:,1]]
-        matrix_rads[pairs[:,1],pairs[:,0]] = 0.6*matrix_rads[pairs[:,1],pairs[:,0]]
-
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
 
  
-    def setSimulatorParameters(self, dt = 1/60, tol = 0.0075, sub_steps = 10,
+    def setSimulatorParameters(self, dt = 0.0025, tol = 0.0075, 
                                rho = 0.1, delta = 0.1, alpha = 0.2,
                                kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
                                str = 0.01*1e-4, shr = 10*1e-4,
                                mu_f = 0.2, mu_s = 0.35, thck = 0.95):
         #solver parameters
-        self.frame_rate = dt #desired frame rate
-        self.sub_steps = sub_steps
-        self.dt = dt/self.sub_steps #time step
-        self.t_int = np.linspace(1/self.sub_steps,1,self.sub_steps) #for interpolating the controls when substepping
+        self.dt = dt #time step
         self.tol = tol #tolerance for constraints
         self.implicitEuler = False
 
@@ -778,15 +745,15 @@ class Cloth:
         self.alpha = alpha # slow damping 
         self.kappa = kappa # bending stiffness
         self.kappa_bnd = kappa_bnd # bending stiffness
-        self.beta = 0.02*self.kappa # fast damping: do not change in general
-        self.str = str/(self.dt**2) # stretch elasticity
-        self.shr = shr/(self.dt**2) # shear elasticity
+        self.beta = 0.015*self.kappa # fast damping: do not change in general
+        self.str = str/(dt**2) # stretch elasticity
+        self.shr = shr/(dt**2) # shear elasticity
         self.mu_floor = mu_f #friction with to the floor
         self.mu_self = mu_s #friction for self-collisions
 
         #self-collision parameters
         self.thck = thck
-        self.mov_tol = 0.025 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
+        self.mov_tol = 0.02 #when some node moves 2% or more than its previous position, run computeClosePairs()
         self.computeRadiouses()
         self.eps_sus = 3.3*self.rad #threshold for detecting close balls in computeClosePairs()
 
@@ -806,11 +773,11 @@ class Cloth:
         self.rho_M = M      
         dt_rho_M = (self.dt*self.rho_M).diagonal()
         self.dt_rho_M = dt_rho_M[:, np.newaxis]
-        self.dt2_delta_Fg = (self.dt**2)*self.delta*self.g*self.Fg
-        self.half_dt2_delta_Fg = 0.5*(self.dt**2)*self.delta*self.g*self.Fg  
+        self.dt2_delta_Fg = (dt**2)*self.delta*self.g*self.Fg
+        self.half_dt2_delta_Fg = 0.5*(dt**2)*self.delta*self.g*self.Fg  
 
         #aerodynamics    
-        self.half_dt2_Fg = 0.5*(self.dt**2)*self.g*self.Fg
+        self.half_dt2_Fg = 0.5*(dt**2)*self.g*self.Fg
         self.F_z = self.half_dt2_Fg[:,2].toarray().flatten(order='F')
         self.rho_M_plus_dt_D = (self.rho_M + self.dt*self.D).tocsr()
         self.E_aux = (self.rho_M + 0.5*self.dt*self.D - 0.25*(self.dt**2)*K).tocsr()
@@ -912,7 +879,7 @@ class Cloth:
 
         #initial impulses
         num = -self.vals_slf[self.ind_slf]; 
-        den = w[b0_col] + w[b1_col] + self.slf
+        den = w[b0_col] + w[b1_col] 
         landa = np.maximum(0,num/den)
         #corrections
         dlt = landa[:,np.newaxis]*normals
@@ -928,7 +895,7 @@ class Cloth:
             dlt_xy = dlt_phi[b1_col] - dlt_phi[b0_col]
             dlt_vals = -self.innerProduct(normals,dlt_xy)
             #compute multipliers
-            res = num + dlt_vals - self.slf*landa
+            res = (num + dlt_vals)
             error_l = np.min(-res/rads)
             landa = np.maximum(0, landa + res/den)
             #corrections
@@ -955,23 +922,15 @@ class Cloth:
             #add new and previous selfcollisions
             ind_s = np.nonzero((self.vals_slf/self.rads) < self.tol)[0]
             self.ind_slf = self.unionMask(self.ind_slf,ind_s)
-            #correction for positions
+            #correct positions
             dlt_phi = self.solveLCP(max_iters)
-            
-            #lets project into stretch space
-            b = -self.stretch.grad@dlt_phi
-            dlt_lambda = self.stretch.factor(b)
-            prj_dlt_phi = dlt_phi + (self.stretch.gradT@dlt_lambda)
-            dlt_phi = 0.5*(dlt_phi + prj_dlt_phi)
-            
+            phi += dlt_phi
             #apply friction if needed
             if self.mu_self > 0 and n_iter < 5:
-                F_mu = self.computeFrictionCorrection(phi + dlt_phi,dlt_phi)
-            else:
-                F_mu = 0*phi
-
-            #update phi
-            phi += dlt_phi + F_mu
+                F_mu = self.computeFrictionCorrection(phi,dlt_phi)
+                phi += F_mu
+            #check for possible new selfcollisions
+            #self.updateSelfCollisions(phi)
             
         return phi
     
@@ -1042,9 +1001,6 @@ class Cloth:
         #second mask
         mask2 = ~self.share_edge[ni,nj]
         ni = ni[mask2]; nj = nj[mask2]
-        #third mask
-        mask3 = ~self.share_control[ni,nj]
-        ni = ni[mask3]; nj = nj[mask3]
         #set radiouses to avoid jitering when the balls are too big
         self.rads = self.matrix_rads[ni,nj]
         #potential colliding nodes-nodes
@@ -1058,7 +1014,7 @@ class Cloth:
         #check close pairs
         diff = phi_mat - self.last_check
         mov = np.sqrt(np.max(self.innerProduct(diff, diff)/self.den_last))
-        if (mov > self.mov_tol) or (self.total_iters == 0) or self.update_chol: #only check when at least 1 node has moved more than mov_eps
+        if (mov > self.mov_tol) or (self.total_iters == 0): #only check when at least 1 node has moved more than mov_eps
             self.computeClosePairs(phi_mat) #update close pairs
             self.last_check = phi_mat #update last checked mesh
             self.den_last = self.innerProduct(self.last_check,self.last_check)
@@ -1084,11 +1040,11 @@ class Cloth:
         return phi 
 
     @profile
-    def projectConstraints(self,constraints,phi,u,control,landa,par,den_error,n):
+    def projectConstraints(self,constraints,phi,u,control,landa,par,update_chol,den_error,n):
         #evaluate constraints
         if n == 0:
             val = constraints.evaluate(phi,u,control,grad=True)
-            if self.update_chol or constraints.factor is None:
+            if update_chol or constraints.factor is None:
                constraints.factor = cholesky_AAt(constraints.grad, beta = par) 
             else:
                constraints.factor.cholesky_AAt_inplace(constraints.grad, beta = par)
@@ -1131,21 +1087,16 @@ class Cloth:
         if n_ctr > 0:
            u[:,2] = np.maximum(0,u[:,2])
            u = u.reshape((3*n_ctr,),order='F')
-           pos0 = self.positions[control].flatten(order='F')
-           U = []
-           for s in range(self.sub_steps):
-               U.append(pos0 + self.t_int[s]*(u - pos0))
+           u_mat = u.reshape((n_ctr,3),order='F')
         else:
            u = np.zeros((0,))
-           U = [u]*self.sub_steps
+           u_mat = np.zeros((0,3))
         #check if we need to update cholesky decomp. of constraints
-        self.update_chol = False
+        update_chol = False
         if self.control != control:
             #update internal variables
             self.control = control
-            self.update_chol = True
-            self.share_control[:] = False
-            self.share_control[np.ix_(control, control)] = True
+            update_chol = True
             if n_ctr > 0:
                 Iu = np.arange(3*n_ctr)
                 Ju = np.concatenate((control, [x+self.n_verts for x in control], [x+2*self.n_verts for x in control]))
@@ -1154,66 +1105,61 @@ class Cloth:
                 Iu = self.empty; Ju = self.empty; Ku = self.empty
             self.shear.update_u(Iu,Ju,Ku)
             self.stretch.update_u(Iu,Ju,Ku)
-        return U
+        return u, u_mat, n_ctr, update_chol
 
 
     @profile
     def simulate(self, u, control):
+        #current position of the cloth 
+        phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
 
         #process the control inputs
-        U = self.processControlInputs(u,control)
+        u, u_mat, n_ctr, update_chol = self.processControlInputs(u,control)
 
-        #substepping
-        n_iter_sub = 0
-        for s in range(self.sub_steps):
+        #unconstrained step to correct
+        phi = self.unconstrainedStep(self.implicitEuler)
 
-            #current position of the cloth 
-            phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
+        #lagrange multipliers for the shear and stretch constraints
+        lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
+        lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
 
-            #interpolated control
-            u = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+        #solver variables for inextensiblity 
+        n_iter = 0; error_str = np.inf; error_shr = np.inf; self.error_slf = -np.inf
 
-            #unconstrained step to correct
-            phi = self.unconstrainedStep(self.implicitEuler)
+        while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: #or self.error_slf < -self.tol:
 
-            #lagrange multipliers for the shear and stretch constraints
-            lambda_shr = np.zeros((self.shear.n_conds + u.shape[0] + 3*self.n_seams,)); 
-            lambda_str = np.zeros((self.stretch.n_conds + u.shape[0] + 3*self.n_seams,)); 
+            #shearing
+            phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
+                                                                lambda_shr,self.shr,
+                                                                update_chol,0.005,n_iter%3)
 
-            #solver variables for inextensiblity 
-            n_iter = 0; error_str = np.inf; error_shr = np.inf; 
+            #stretching
+            phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
+                                                                lambda_str,self.str,
+                                                                update_chol,0,0)   
+            
 
-            while (error_str > self.tol or error_shr > self.tol) and n_iter < 100: 
+            #control constraints
+            #phi = self.projectControl(phi,u_mat,control,n_ctr)
+            
+            #self-collisions
+            phi = self.selfCollisions(phi,n_iter); 
 
-                #shearing
-                phi, lambda_shr, error_shr = self.projectConstraints(self.shear,phi,u,control,
-                                                                    lambda_shr,self.shr,0.005,s%5)
+            #iteration count 
+            n_iter += 1
 
-                #stretching
-                phi, lambda_str, error_str = self.projectConstraints(self.stretch,phi,u,control,
-                                                                    lambda_str,self.str,0,0)   
-                
-                
-                #self-collisions
-                phi = self.selfCollisions(phi,n_iter); 
+        #print(n_iter)
 
-                #iteration count 
-                n_iter += 1
-            #print(n_iter)
+        #floor collisions
+        phi = self.floorCollisions(phi)
 
-            #floor collisions
-            phi = self.floorCollisions(phi)
-
-            #update internal cloth variables
-            dphi = (phi-phi0)/self.dt
-            self.positions = phi.reshape((self.n_verts, 3), order='F')
-            self.velocities = dphi.reshape((self.n_verts, 3), order='F')
-            n_iter_sub += n_iter
-
-        #save final positions and velocities
+        #update internal cloth variables
+        dphi = (phi-phi0)/self.dt
+        self.positions = phi.reshape((self.n_verts, 3), order='F')
+        self.velocities = dphi.reshape((self.n_verts, 3), order='F')
         self.history_pos.append(self.positions)
         self.history_vel.append(self.velocities)
-        self.total_iters += n_iter_sub/self.sub_steps
+        self.total_iters += n_iter
 
         #warnings
         if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
