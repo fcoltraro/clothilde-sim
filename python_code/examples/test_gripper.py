@@ -6,7 +6,7 @@ notebook_dir = os.getcwd()
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir + "/python_code")
 
-from implementation.Cloth import Cloth
+from implementation.Cloth0 import Cloth
 from implementation.utils import createRectangularMesh
 from implementation.Gripper import (
     SimulateGripper,

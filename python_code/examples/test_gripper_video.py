@@ -9,7 +9,7 @@ EXPORT_DIR = CLOTHILDE_ROOT + "/exported_test_gripper_temp" # By keeping everyth
 # os.makedirs(EXPORT_DIR, exist_ok=True)
 export = False
 
-from implementation.Cloth import Cloth
+from implementation.Cloth0 import Cloth
 from implementation.utils import createRectangularMesh
 
 from implementation.Gripper import (
