@@ -27,6 +27,8 @@ We recomend using the miniconda package and a conda enviroment for simulation (e
 
 The simulator is natively implemented in Python (>=3.11) and relies on the following computing libraries: Numpy, Scipy, scikit-sparse, CHOLMOD and pykdtree. Visualization is done by Polyscope and profiling by line_profiler.
 
+**IMPORTANT**: does not (yet) supports scikit-sparse 0.5.0 (use an older version).
+
 ### 1.2 Installation Steps
 
 #### Step 0: Clone the repository 
@@ -77,7 +79,7 @@ X, T = createRectangularMesh(a = 0.5, b = 0.8, na = na, nb = nb, h = 0.2)
 clothilde = Cloth(X, T);
 
 #set default parameters
-dt = clothilde.estimateTimeStep(L = 0.8)
+dt = 1/60 #simulate at 60 Hz
 clothilde.setSimulatorParameters(dt = dt)
 
 #simulate 6 seconds fixing two corners
@@ -86,7 +88,7 @@ for _ in range(tf):
     clothilde.simulate(u = u, control = inds)
 
 #make a movie with the simulated frames
-clothilde.makeMovie(speed = 5, repeat = True, smooth = 2)
+clothilde.makeMovie(speed = 1, repeat = True, smooth = 2)
 ```
 
 ### 3.2 State Access
@@ -115,6 +117,7 @@ Physical parameters:
 * delta: Aerodynamics parameter (between 0 and rho, see the first reference)
 * alpha: Rayleigh linear damping of big oscillations (usually between rho and 3*rho)
 * kappa: stifness or bending resistance (scales like dt²)
+* kappa_bnd: stifness or bending resistance for the boundary (scales like dt²)
 * shr: allowed shearing resistance (scales like dt², 0 is no shearing)
 * str: allowed stretching resistance (scales like dt², 0 is no stretching)
 * mu_f: friction with the floor (typically between 0 and 1)
@@ -136,7 +139,7 @@ Time step `dt` is a **critical parameter**:
 * Too large → excessive number of iterations
 * Too small → unnecessary computational cost
 
-Typical values are of the order of 0.001 and bigger. Use `self.estimateTimeStep(L)` where L is the largest linear dimension of your cloth. 
+Typical values are of the order of 0.001. In practice, set dt = 1/60 and then e.g. sub_steps = 8, so that you do 8 intermidiate steps between each frame, i.e. the real dt becomes 1/(60*8). 
 
 ### 6.2 Constraint satisfaction
 

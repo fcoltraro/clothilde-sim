@@ -17,7 +17,7 @@ X[:,2] += 0.6; #adjust height
 clothilde = Cloth(X, T)
 
 # solver parameters
-dt = 0.002 #time step
+dt = 1/60 #time step
 tol = 0.0095 # up to 0.75% of relative error in constraint satisfaction to stop iterations
 
 #physical parameters
@@ -26,37 +26,38 @@ delta = 0.08 # aerodynamics parameter: between 0 and rho
 kappa = 0.25*1e-4 # stifness or bending resistance
 kappa_bnd = 0.01*1e-4 # stifness or bending resistance
 alpha = 0.2 #damping of oscillations
-shr = 0.5*1e-4 #allowed shearing resistance
+shr = 5*1e-4 #allowed shearing resistance
 str = 0.005*1e-4 #allowed stretching resistance
 mu_f = 0.45 #friction with the floor
 mu_s = 0.35 #friction with the cloth itself
 thck = 0.95 #size of the balls
+sub_steps = 10
 
-clothilde.setSimulatorParameters(dt=dt,tol=tol,
+clothilde.setSimulatorParameters(dt=dt,tol=tol,sub_steps=sub_steps,
                                 rho=rho,delta=delta,kappa=kappa,kappa_bnd = kappa_bnd, shr=shr,
                                 str=str,alpha=alpha,mu_f=mu_f,mu_s=mu_s,
-                                thck=thck)
+                                thck=thck,max_mov=0.5)
 
-tf = 1000; t = np.linspace(0,2*np.pi,tf); freq = 3
+tf = int(2/dt); t = np.linspace(0,2*np.pi,tf); freq = 2
 inds_ctr = [0,na-1]
 u = X[inds_ctr]
 
 start_time = time.time()
-for i in range(1000):
-    clothilde.simulate(u = u, control = inds_ctr)
-u = clothilde.positions[inds_ctr]; 
 for i in range(tf):
-    u[:,1] += 0.0035*np.sin(freq*t[i])
+    clothilde.simulate(u = u, control = inds_ctr)
+u = clothilde.positions[inds_ctr]; u0 = u.copy()
+for i in range(tf):
+    u[:,1] = u0[:,1] + 0.3*np.sin(freq*t[i])
     clothilde.simulate(u = u, control = inds_ctr)
 inds_ctr = [0]
 u = clothilde.positions[inds_ctr]; 
-for i in range(1000):
+for i in range(tf):
     clothilde.simulate(u = u, control = inds_ctr)
 
 print('Time:',time.time()-start_time)
 print('Average iterations',clothilde.total_iters/(len(clothilde.history_pos)-1))
 
 
-clothilde.makeMovie(5,True,2)
+clothilde.makeMovie(1,True,2)
 
 #kernprof -l -v test6.py > perfil_selfcols6.txt

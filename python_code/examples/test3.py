@@ -22,8 +22,8 @@ X += 0.0002*np.random.randn(X.shape[0],3)
 
 self = Cloth(X, T); 
 dt = 1/60
-self.setSimulatorParameters(dt = dt, thck = 0.95, mu_s = 0.0, str = 0.005*1e-4, kappa_bnd = 0.1*1e-4, 
-                            shr = 10*1e-4, tol = 0.0075, kappa = 1.25*1e-4, mu_f = 0.3, sub_steps = 12, slf=0.01)
+self.setSimulatorParameters(dt = dt, thck = 1, mu_s = 0.4, str = 0.005*1e-4, kappa_bnd = 0.1*1e-4, 
+                            shr = 10*1e-4, tol = 0.0075, kappa = 1.25*1e-4, mu_f = 0.35, sub_steps = 10, slf = 0.001)
 self.plotMesh()
 tf = int(3/dt)
 inds = [363]; u = self.positions[inds]
@@ -33,11 +33,9 @@ for i in range(tf):
 tf = int(2.5/dt)
 t = np.linspace(0,2*np.pi,tf)
 inds = [0]
-
-for j in tqdm(range(tf), desc="Simulating", unit="step"):
-    #print("iteration :",j)
-    u = self.positions[inds]
-    u[:,2] += 0.004*np.sin(2*t[j])
+u0 = u = self.positions[inds]
+for j in range(tf):    
+    u[:,2] = u0[:,2] + 0.02*np.sin(2*t[j])
     self.simulate(u = u, control = inds)
 tf = int(3/dt)
 inds = []

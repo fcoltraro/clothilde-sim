@@ -15,7 +15,7 @@ X[:,2] += 0.35;
 X += 0.0002*np.random.randn(X.shape[0],3) 
 self = Cloth(X,T); 
 dt = self.estimateTimeStep(L=2*np.pi*0.11)
-dt = 0.002
+dt = 1/60
 self.plotMesh()
 self.setSimulatorParameters(dt = dt, delta= 0.1, kappa= 0.2*1e-4, tol = 0.0075, str = 0.0025*1e-4, shr = 2*1e-4, mu_s = 0.35, thck = 0.95, mu_f = 0.25)
 
@@ -38,6 +38,6 @@ print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
 
 
-self.makeMovie(speed=4,repeat=True,smooth=2)
+self.makeMovie(speed=1,repeat=True,smooth=2)
 #kernprof -l -v test7.py > perfil_selfcols7.txt
 

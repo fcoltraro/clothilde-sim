@@ -761,8 +761,8 @@ class Cloth:
     def setSimulatorParameters(self, dt = 1/60, tol = 0.0075, sub_steps = 10,
                                rho = 0.1, delta = 0.1, alpha = 0.2,
                                kappa = 0.5*1e-4, kappa_bnd = 0.05*1e-4, 
-                               str = 0.01*1e-4, shr = 10*1e-4,
-                               mu_f = 0.2, mu_s = 0.35, thck = 0.95):
+                               str = 0.01*1e-4, shr = 10*1e-4, slf = 1*1e-4,
+                               mu_f = 0.2, mu_s = 0.35, thck = 0.95, max_mov= 0.1):
         #solver parameters
         self.frame_rate = dt #desired frame rate
         self.sub_steps = sub_steps
@@ -781,12 +781,14 @@ class Cloth:
         self.beta = 0.02*self.kappa # fast damping: do not change in general
         self.str = str/(self.dt**2) # stretch elasticity
         self.shr = shr/(self.dt**2) # shear elasticity
+        self.slf = slf/(self.dt**2) # self-collisions elasticity
         self.mu_floor = mu_f #friction with to the floor
         self.mu_self = mu_s #friction for self-collisions
 
         #self-collision parameters
         self.thck = thck
         self.mov_tol = 0.025 #when some node moves 2.5% or more than its previous position, run computeClosePairs()
+        self.max_mov = max_mov #between 0 and 1 fraction of mean edge length that the control nodes can move in one time step
         self.computeRadiouses()
         self.eps_sus = 3.3*self.rad #threshold for detecting close balls in computeClosePairs()
 
@@ -1155,6 +1157,19 @@ class Cloth:
             self.shear.update_u(Iu,Ju,Ku)
             self.stretch.update_u(Iu,Ju,Ku)
         return U
+    
+    def limitControlVelocity(self, u_raw):
+        u_raw_mat = u_raw.reshape((len(self.control), 3), order="F")
+
+        u_used = self.positions[self.control]
+
+        du = u_raw_mat - u_used
+        dist = self.computeNorm(du)
+        scale = np.minimum(1.0, self.max_step / (dist + 1e-12))
+
+        u_clmp = u_used + scale[:, None] * du
+
+        return u_clmp.flatten(order="F")
 
 
     @profile
@@ -1171,7 +1186,8 @@ class Cloth:
             phi0 = self.positions.reshape((3*self.n_verts,),order = 'F')
 
             #interpolated control
-            u = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+            u_raw = U[s]; #u_mat = u.reshape((n_ctr,3),order='F')
+            u = self.limitControlVelocity(u_raw)
 
             #unconstrained step to correct
             phi = self.unconstrainedStep(self.implicitEuler)
@@ -1199,7 +1215,6 @@ class Cloth:
 
                 #iteration count 
                 n_iter += 1
-            #print(n_iter)
 
             #floor collisions
             phi = self.floorCollisions(phi)

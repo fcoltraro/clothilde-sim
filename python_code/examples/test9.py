@@ -26,9 +26,9 @@ X[:,2] += 1.8;
 
 
 self = Cloth(X, T, seam); 
-dt = self.estimateTimeStep(L=2)
+dt = 1/60
 self.setSimulatorParameters(dt = dt, thck = 0.99, mu_s = 0.35, str = 0.001*1e-4, shr = 2.5*1e-4, 
-                            tol = 0.0075, kappa = 1.5*1e-4, kappa_bnd = 0.5*1e-4,  mu_f = 0.25)
+                            tol = 0.0075, kappa = 1.5*1e-4, kappa_bnd = 0.5*1e-4,  mu_f = 0.25, sub_steps = 10)
 print(self.corners)
 self.plotMesh()
 
@@ -40,9 +40,6 @@ start_time = time.time()
 for i in range(tf):
     self.simulate(u = u, control = inds_ctr)
 u = self.positions[inds_ctr]; 
-for i in range(0*tf):
-    u[:,1] += 0.0065*np.sin(freq*t[i])
-    self.simulate(u = u, control = inds_ctr)
 inds_ctr = []
 u = self.positions[inds_ctr]; 
 for i in range(tf):
@@ -51,4 +48,4 @@ for i in range(tf):
 print('Time:',time.time()-start_time)
 print('Average iterations',self.total_iters/(len(self.history_pos)-1))
 
-self.makeMovie(speed=5,repeat=False,smooth=2)
+self.makeMovie(speed=1,repeat=False,smooth=2)
