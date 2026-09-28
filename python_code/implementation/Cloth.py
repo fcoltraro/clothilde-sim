@@ -879,13 +879,31 @@ class Cloth:
         matrix_rads[d1,d3] = sum_rads1
 
         #edges that share a node
-        pairs = self.buildReducedRadiusPairs()
-        i = pairs[:, 0]
-        j = pairs[:, 1]
-
-        matrix_rads[i, j] *= 0.6
-        matrix_rads[j, i] *= 0.6
-        
+        S = self.A0 @ self.A0.T
+        ei, ej = S.nonzero()
+        # avoids duplicates and self-pairs
+        mask = ei < ej          
+        ei = ei[mask]
+        ej = ej[mask]
+        # find endpoints that are not shared
+        e0 = self.edges_matrix[ei]
+        e1 = self.edges_matrix[ej]
+        same00 = e0[:, 0] == e1[:, 0]
+        same01 = e0[:, 0] == e1[:, 1]
+        same10 = e0[:, 1] == e1[:, 0]
+        same11 = e0[:, 1] == e1[:, 1]
+        #take the opposites
+        pairs = np.empty((len(ei), 2), dtype=self.edges_matrix.dtype)
+        pairs[same00] = np.column_stack([e0[same00, 1], e1[same00, 1]])
+        pairs[same01] = np.column_stack([e0[same01, 1], e1[same01, 0]])
+        pairs[same10] = np.column_stack([e0[same10, 0], e1[same10, 1]])
+        pairs[same11] = np.column_stack([e0[same11, 0], e1[same11, 0]])
+        #make the pair of nodes unique
+        pairs = np.sort(pairs, axis=1)
+        pairs = np.unique(pairs, axis=0)
+        #reduce their collision radious in half
+        matrix_rads[pairs[:,0],pairs[:,1]] = 0.6*matrix_rads[pairs[:,0],pairs[:,1]]
+        matrix_rads[pairs[:,1],pairs[:,0]] = 0.6*matrix_rads[pairs[:,1],pairs[:,0]]
 
         #save matrix for fast indixing
         self.matrix_rads = matrix_rads
@@ -1488,4 +1506,3 @@ class Cloth:
         if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
            print("WARNING: average of more than 4 iterations taken, for better performance reduce dt or increase thck")
            self.warning = True
-

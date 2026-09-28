@@ -1,0 +1,41 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "Z:\\vs\\clothilde-sim\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|Z:\\vs\\clothilde-sim\\python_code\\abhilash\\test_10_gripper_live_PointsOnQuad.py||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:python_code\\abhilash\\test_10_gripper_live_PointsOnQuad.py||{8B382828-6202-11D1-8870-0000F87579D2}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{aa2115a1-9712-457b-9047-dbb71ca2cdd2}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "test_10_gripper_live_PointsOnQuad.py",
+              "DocumentMoniker": "Z:\\vs\\clothilde-sim\\python_code\\abhilash\\test_10_gripper_live_PointsOnQuad.py",
+              "RelativeDocumentMoniker": "python_code\\abhilash\\test_10_gripper_live_PointsOnQuad.py",
+              "ToolTip": "Z:\\vs\\clothilde-sim\\python_code\\abhilash\\test_10_gripper_live_PointsOnQuad.py",
+              "RelativeToolTip": "python_code\\abhilash\\test_10_gripper_live_PointsOnQuad.py",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAA==",
+              "Icon": "00000000-0000-0000-0000-000000000000.000000|iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAMMSURBVEhLrZXNTxNBFMDf7G5x0baCfDWIEeNBjZqIUYloYvkD\u002BAMITTjogYMJJxKQmECqBAIHuMjBgwcOeCM9ePBEk5rgAU2jIMXUQASV0BIrLd1itzu\u002BmU7bxfK1hF/yZt97sztv5s2bWQKBRCcQ8hiAKmCNmIMk\u002BuL3XD5hF0MpJfAuoaGqZj2HxyFtgUNO6OVk8/b8nYagcBfBAlChHxoxODilOJTI64nPpbMfcKpiHLKK2lO40rPMLIn7LGAenEkVydgvZc48wC53VqgHp\u002B3lLyPFK7hvF8oRCQ2w1g\u002BXnzQzxfIKrLJngEAgAEtLS7CwsACTk5Pgcrm4v729nfcx//j4ONjt\u002B694zwB1dXXQ3d0NLS0toKoqDA8PQ1tbG4yMjHBpbW2F\u002Bvp6mJiYEF9kuUBYURY4MEW6rkMqleK6x\u002BOBwcFB8Pl8EAwGeZCxsTHel6NHnQebBD\u002BEuX\u002BA0dFRmJ6e5ivo6uriaYrFYqIXTxrqfr9fWFlu2tbA53gTFybCqsgsWGdMMP/U7XbnbSZer5fOzMxQzDu3e3t76dTU1I53Fteu01/r59O/18/eQNtaFfX390M4HIZIJAIrKyvQ0dEBQ0NDojcLOxulZFshRH9FKSg7zgE7RPGmGq6zTY5Go/n8mykrK\u002BP9c3NzwlMgFslWG4MA9OUD5E7oz8aLvPOomANg0qISNqvm43\u002BsEKiUnPLWIxw8kbtbjhtps6nmbXXJ5jlVifTZ5I2M8B8bvIqCDQ2xYOlsY\u002BjkR5l7EfxX7CpWMZWp0bxN8\u002BPjT47sKlYxBSCKZvmveTCFKYUG0tgqTvIXt16DSry0Cs8k16/KG3BNiUDFfxfaXuCC9aKTnKQ2FAWSgIJPDZ8a\u002BtjqljNOeJ\u002BuhU\u002BZavhjnICMaX7FUAObTnMA5gAdP8oNyKQQDAOLoBuGCt8NJ0SMU/i\u002BzG6/WZTXlNBnuFMeItG7UlquOV259qIwhS/PX4IsPcRSISUYi6eHpQbTgSmJV0nJxSpJC1dIKRQtVC1p38qNRPhW7deoGGEXAP4BS2xabqDq3/4AAAAASUVORK5CYII=",
+              "WhenOpened": "2026-04-09T15:04:06.133Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
