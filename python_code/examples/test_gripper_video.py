@@ -9,34 +9,20 @@ EXPORT_DIR = CLOTHILDE_ROOT + "/exported_test_gripper_temp" # By keeping everyth
 # os.makedirs(EXPORT_DIR, exist_ok=True)
 export = False
 
-from implementation.Cloth_speed import Cloth
+from implementation.Cloth import Cloth
 from implementation.utils import createRectangularMesh
 
-is_gripper_box = True # True: box, False: square pyramid
+from implementation.Gripper import (
+    SimulateGripper,
+    quat_from_axis_angle,
+    quat_to_rotmat,
+    quat_transform_points,
+    quat_normalize,
+    quat_from_rotvec,
+    quat_rotate_vector,
+    quat_mul
+)
 
-if is_gripper_box:
-    from implementation.Gripper import (
-        SimulateGripper,
-        quat_from_axis_angle,
-        quat_to_rotmat,
-        quat_transform_points,
-        quat_normalize,
-        quat_from_rotvec,
-        quat_rotate_vector,
-        quat_mul
-    )
-else:
-    from implementation.Gripper_pyramid import (
-        SimulateGripper,
-        quat_from_axis_angle,
-        quat_to_rotmat,
-        quat_transform_points,
-        quat_normalize,
-        quat_from_rotvec,
-        quat_rotate_vector,
-        quat_mul
-    )
-    
 import numpy as np
 import trimesh
 import math
@@ -113,54 +99,32 @@ follow_enabled = False
 
 # Gripper parallelopiped
 
-if is_gripper_box:
-    box_faces = np.array([
-        [0,1,2], [0,2,3],
-        [4,5,6], [4,6,7],
-        [0,1,5], [0,5,4],
-        [1,2,6], [1,6,5],
-        [2,3,7], [2,7,6],
-        [3,0,4], [3,4,7],
-    ], dtype=int)
+box_faces = np.array([
+    [0,1,2], [0,2,3],
+    [4,5,6], [4,6,7],
+    [0,1,5], [0,5,4],
+    [1,2,6], [1,6,5],
+    [2,3,7], [2,7,6],
+    [3,0,4], [3,4,7],
+], dtype=int)
 
-    def get_box_vertices_world_offset(p, q, box_size, center_local):
-        hx, hy, hz = 0.5 * np.asarray(box_size, dtype=float)
-        c = np.asarray(center_local, dtype=float).reshape(3,)
+def get_box_vertices_world_offset(p, q, box_size, center_local):
+    hx, hy, hz = 0.5 * np.asarray(box_size, dtype=float)
+    c = np.asarray(center_local, dtype=float).reshape(3,)
 
-        V_local = np.array([
-            [-hx, -hy, -hz],
-            [ hx, -hy, -hz],
-            [ hx,  hy, -hz],
-            [-hx,  hy, -hz],
-            [-hx, -hy,  hz],
-            [ hx, -hy,  hz],
-            [ hx,  hy,  hz],
-            [-hx,  hy,  hz],
-        ], dtype=float)
-        
-        V_local = V_local + c.reshape(1, 3)
-        return quat_transform_points(np.asarray(p, dtype=float), quat_normalize(q), V_local)
-
-else:
-    box_faces = np.array([
-        [0,1,4], [1,2,4],
-        [2,3,4], [0,3,4],
-        [0,1,2], [0,2,3]], dtype=int)
-
-    def get_box_vertices_world_offset(p, q, box_size, center_local):
-        side, height = np.asarray(box_size, dtype=float)
-        c = np.asarray(center_local, dtype=float).reshape(3,)
-
-        V_local = np.array([
-            [-side/2, -side/2, 0],
-            [-side/2, side/2, 0],
-            [side/2, side/2, 0],
-            [side/2, -side/2, 0],
-            [0, 0, -height]
-        ], dtype=float)
-
-        V_local = V_local + c.reshape(1, 3)
-        return quat_transform_points(np.asarray(p, dtype=float), quat_normalize(q), V_local)
+    V_local = np.array([
+        [-hx, -hy, -hz],
+        [ hx, -hy, -hz],
+        [ hx,  hy, -hz],
+        [-hx,  hy, -hz],
+        [-hx, -hy,  hz],
+        [ hx, -hy,  hz],
+        [ hx,  hy,  hz],
+        [-hx,  hy,  hz],
+    ], dtype=float)
+    
+    V_local = V_local + c.reshape(1, 3)
+    return quat_transform_points(np.asarray(p, dtype=float), quat_normalize(q), V_local)
 
 def load_mesh(path):
     m = trimesh.load_mesh(path)
@@ -218,13 +182,8 @@ ps.register_surface_mesh(
 )
 
 # grasp box
-if is_gripper_box:
-    grasp_box = 0.001 * np.array([30, 30, 30], dtype=float)
-    tip_center_local = 0.001 * np.array([0.0, 0.0, - (52 - grasp_box[2] * 1000 / 2)], dtype=float)
-else:    
-    grasp_box = 0.001 * np.array([30, 15], dtype=float)
-    tip_center_local = 0.001 * np.array([0.0, 0.0, - (52 - grasp_box[1] * 1000 / 2)], dtype=float)
-
+grasp_box = 0.001 * np.array([30, 30, 30], dtype=float)
+tip_center_local = 0.001 * np.array([0.0, 0.0, - (52 - grasp_box[2] * 1000 / 2)], dtype=float)
 
 # grasp_box = 0.001 * np.array([6, 30, 6], dtype=float)
 # tip_center_local = 0.001 * np.array([0.0, 0.0, -49], dtype=float)
