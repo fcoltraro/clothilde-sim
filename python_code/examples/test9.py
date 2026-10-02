@@ -2,14 +2,14 @@ import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir)
-from implementation.Cloth import Cloth 
+from implementation.Cloth import Cloth
 from implementation.utils import createRectangularMesh, duplicate_node_pairs, weld_quad_mesh
 import numpy as np
 np.set_printoptions(threshold=sys.maxsize)
 import time
 
 # Caida libre
-na = 25; nb = 25
+na = 35; nb = 35
 np.random.seed(10)
 X, T = createRectangularMesh(a = 1, b = 1, na = na, nb = nb, h = 0.75)
 X[:,2] = (1 - np.exp(3*(X[:,1]-0.5)))*X[:,2]

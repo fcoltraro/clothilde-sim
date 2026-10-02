@@ -199,3 +199,234 @@ def weld_quad_mesh(X, T, tol=1e-10, remove_degenerate=True):
 
     return X_clean, T_clean, old_to_new, groups
 
+from collections import deque, defaultdict
+from scipy.sparse import lil_matrix, csr_matrix
+
+def refine_rect_quad_mesh(T, n, m, num_vertices=None):
+    """
+    Refine a structured rectangular quadrilateral mesh.
+
+    Parameters
+    ----------
+    T : (F,4) int array
+        Coarse quad connectivity. Each quad must be cyclically ordered.
+    n : int
+        Number of subdivisions per coarse cell in the vertical direction.
+    m : int
+        Number of subdivisions per coarse cell in the horizontal direction.
+    num_vertices : int or None
+        Number of coarse vertices. If None, inferred as T.max()+1.
+
+    Returns
+    -------
+    Tf : (Ff,4) int array
+        Refined quad connectivity.
+    S : scipy.sparse.csr_matrix, shape (Nf, N)
+        Prolongation/interpolation matrix. If X is (N,d), then
+        Xf = S @ X is (Nf,d).
+        The first N rows of S form the identity, so original vertices are kept
+        at the top of Xf.
+    """
+
+    T = np.asarray(T, dtype=int)
+    if T.ndim != 2 or T.shape[1] != 4:
+        raise ValueError("T must have shape (F,4)")
+    if n < 1 or m < 1:
+        raise ValueError("n and m must be positive integers")
+
+    N = int(T.max()) + 1 if num_vertices is None else int(num_vertices)
+    F = T.shape[0]
+
+    # ------------------------------------------------------------------
+    # 1) Recover the logical coarse grid (rows x cols) from the quad mesh
+    # ------------------------------------------------------------------
+
+    # Build face adjacency through undirected edges
+    edge_to_faces = defaultdict(list)
+    for f, q in enumerate(T):
+        for k in range(4):
+            a = q[k]
+            b = q[(k + 1) % 4]
+            e = tuple(sorted((a, b)))
+            edge_to_faces[e].append((f, k))
+
+    face_nbrs = [[None] * 4 for _ in range(F)]
+    for e, lst in edge_to_faces.items():
+        if len(lst) == 2:
+            (f0, k0), (f1, k1) = lst
+            face_nbrs[f0][k0] = (f1, k1)
+            face_nbrs[f1][k1] = (f0, k0)
+        elif len(lst) != 1:
+            raise ValueError("Non-manifold edge detected")
+
+    # Assign integer cell coordinates to faces by BFS
+    # Local edge convention for a face q=[v0,v1,v2,v3]:
+    # edge 0: v0-v1  -> neighbor at (-1, 0)
+    # edge 1: v1-v2  -> neighbor at ( 0,+1)
+    # edge 2: v2-v3  -> neighbor at (+1, 0)
+    # edge 3: v3-v0  -> neighbor at ( 0,-1)
+    edge_dirs = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+
+    face_rc = {0: (0, 0)}
+    q = deque([0])
+
+    while q:
+        f = q.popleft()
+        r, c = face_rc[f]
+        for k in range(4):
+            nbr = face_nbrs[f][k]
+            if nbr is None:
+                continue
+            g, _ = nbr
+            rr = r + edge_dirs[k][0]
+            cc = c + edge_dirs[k][1]
+            if g not in face_rc:
+                face_rc[g] = (rr, cc)
+                q.append(g)
+            else:
+                if face_rc[g] != (rr, cc):
+                    raise ValueError("Mesh is not a consistent structured rectangular quad mesh")
+
+    # Shift to start at (0,0)
+    min_r = min(r for r, c in face_rc.values())
+    min_c = min(c for r, c in face_rc.values())
+    face_rc = {f: (r - min_r, c - min_c) for f, (r, c) in face_rc.items()}
+
+    H = max(r for r, c in face_rc.values()) + 1   # number of coarse cells vertically
+    W = max(c for r, c in face_rc.values()) + 1   # number of coarse cells horizontally
+
+    if H * W != F:
+        raise ValueError("The quad mesh is not a full rectangular grid")
+
+    # Assign coarse grid coordinates to vertices
+    # For a face q=[v0,v1,v2,v3] at cell (r,c), assign:
+    # v0 -> (r,c), v1 -> (r,c+1), v2 -> (r+1,c+1), v3 -> (r+1,c)
+    vertex_rc = {}
+    for f, quad in enumerate(T):
+        r, c = face_rc[f]
+        corners = [
+            (r, c),
+            (r, c + 1),
+            (r + 1, c + 1),
+            (r + 1, c),
+        ]
+        for v, rc in zip(quad, corners):
+            if v in vertex_rc:
+                if vertex_rc[v] != rc:
+                    raise ValueError("Inconsistent vertex placement; check quad orientations/orderings")
+            else:
+                vertex_rc[v] = rc
+
+    if len(vertex_rc) != N:
+        raise ValueError("Some vertices were not assigned logical grid coordinates")
+
+    coarse_grid = -np.ones((H + 1, W + 1), dtype=int)
+    for v, (r, c) in vertex_rc.items():
+        if coarse_grid[r, c] != -1 and coarse_grid[r, c] != v:
+            raise ValueError("Duplicate coarse-grid placement detected")
+        coarse_grid[r, c] = v
+
+    if np.any(coarse_grid < 0):
+        raise ValueError("The mesh does not define a complete rectangular coarse grid")
+
+    # ------------------------------------------------------------------
+    # 2) Create fine-grid vertex indexing, keeping original vertices first
+    # ------------------------------------------------------------------
+
+    Hf = H * n
+    Wf = W * m
+
+    fine_idx = -np.ones((Hf + 1, Wf + 1), dtype=int)
+
+    # Original coarse vertices stay at their original indices 0..N-1
+    for r in range(H + 1):
+        for c in range(W + 1):
+            fine_idx[r * n, c * m] = coarse_grid[r, c]
+
+    next_idx = N
+    for r in range(Hf + 1):
+        for c in range(Wf + 1):
+            if fine_idx[r, c] == -1:
+                fine_idx[r, c] = next_idx
+                next_idx += 1
+
+    Nf = next_idx
+
+    # ------------------------------------------------------------------
+    # 3) Build prolongation matrix S, so Xf = S @ X
+    # ------------------------------------------------------------------
+
+    S = lil_matrix((Nf, N), dtype=float)
+
+    # Original vertices: identity rows
+    for i in range(N):
+        S[i, i] = 1.0
+
+    def coarse_cell_and_local_coords(rf, cf):
+        """
+        For fine-grid logical coordinates (rf, cf), return
+        coarse cell (r0, c0) and local bilinear coordinates (v,u) in [0,1].
+        v = vertical local coordinate
+        u = horizontal local coordinate
+        """
+        if rf == Hf:
+            r0 = H - 1
+            v = 1.0
+        else:
+            r0 = rf // n
+            v = (rf - r0 * n) / n
+
+        if cf == Wf:
+            c0 = W - 1
+            u = 1.0
+        else:
+            c0 = cf // m
+            u = (cf - c0 * m) / m
+
+        return r0, c0, v, u
+
+    for rf in range(Hf + 1):
+        for cf in range(Wf + 1):
+            idx = fine_idx[rf, cf]
+
+            # original vertices already set
+            if idx < N:
+                continue
+
+            r0, c0, v, u = coarse_cell_and_local_coords(rf, cf)
+
+            v00 = coarse_grid[r0,     c0]
+            v10 = coarse_grid[r0,     c0 + 1]
+            v11 = coarse_grid[r0 + 1, c0 + 1]
+            v01 = coarse_grid[r0 + 1, c0]
+
+            w00 = (1.0 - u) * (1.0 - v)
+            w10 = u * (1.0 - v)
+            w11 = u * v
+            w01 = (1.0 - u) * v
+
+            S[idx, v00] = w00
+            S[idx, v10] = w10
+            S[idx, v11] = w11
+            S[idx, v01] = w01
+
+    S = S.tocsr()
+
+    # ------------------------------------------------------------------
+    # 4) Build refined quad connectivity
+    # ------------------------------------------------------------------
+
+    Tf = []
+    for r in range(Hf):
+        for c in range(Wf):
+            q = [
+                fine_idx[r,     c],
+                fine_idx[r,     c + 1],
+                fine_idx[r + 1, c + 1],
+                fine_idx[r + 1, c],
+            ]
+            Tf.append(q)
+
+    Tf = np.asarray(Tf, dtype=int)
+    return Tf, S
+

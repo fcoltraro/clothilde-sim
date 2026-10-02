@@ -883,8 +883,8 @@ class Cloth:
         i = pairs[:, 0]
         j = pairs[:, 1]
 
-        matrix_rads[i, j] *= 0.6
-        matrix_rads[j, i] *= 0.6
+        matrix_rads[i, j] *= 0.5
+        matrix_rads[j, i] *= 0.5
         
 
         #save matrix for fast indixing
