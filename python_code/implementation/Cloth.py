@@ -1488,4 +1488,3 @@ class Cloth:
         if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
            print("WARNING: average of more than 4 iterations taken, for better performance reduce dt or increase thck")
            self.warning = True
-

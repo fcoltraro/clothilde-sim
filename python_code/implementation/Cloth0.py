@@ -157,6 +157,12 @@ class Cloth:
         self.prepareMatrices()
         self.computeStretchShear()
         self.precomputeBoundaryBending()
+        
+    def getPositionsUnity(self, smooth):
+        phi_all = self.Am@self.positions
+        for _ in range(smooth):
+            phi_all = self.S@phi_all
+        return phi_all.tolist()
 
     def checkQuadMesh(self):
         pass
@@ -1259,6 +1265,14 @@ class Cloth:
             self.stretch.update_u(Iu,Ju,Ku)
         return U
     
+    def fromAddressToArray(self, address, length, tp):
+        pointer_type = ctypes.POINTER(tp)
+
+        raw_pointer = ctypes.cast(address, pointer_type)
+
+        np_array = np.ctypeslib.as_array(raw_pointer, shape=(length,))
+        return np_array
+    
     def limitControlVelocity(self, u_raw):
         u_raw_mat = u_raw.reshape((len(self.control), 3), order="F")
 
@@ -1275,7 +1289,6 @@ class Cloth:
 
     @profile
     def simulate(self, u, control):
-
         #process the control inputs
         U = self.processControlInputs(u,control)
 
@@ -1339,4 +1352,3 @@ class Cloth:
         if self.total_iters/(len(self.history_pos)-1) > 4 and self.warning == False:
            print("WARNING: average of more than 4 iterations taken, for better performance reduce dt or increase thck")
            self.warning = True
-

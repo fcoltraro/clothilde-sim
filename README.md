@@ -1,3 +1,6 @@
+
+
+
 # clothilde-sim: accurate physical simulation of (quasi)-inextensible textiles 
 
 
@@ -159,7 +162,17 @@ This allows modeling pick-and-place operations. For performing one time-step sim
 
 ---
 
-## 8. Citation
+### 8. Gripper Examples
+
+Two example scripts are provided for interacting with the cloth using a gripper:
+
+* `test_gripper.py`: allows **manual grasping and manipulation** of the cloth using the gripper interface.
+* `test_gripper_video.py`: allows **automated grasping and manipulation** by prescribing the gripper trajectory. The gripper `pose` and `jaw_status` can be modified over time to define the desired motion and grasping sequence.
+
+https://github.com/user-attachments/assets/29867569-27c6-4484-8a98-d5c4a171192f
+
+
+## 9. Citation
 
 If you use this simulator in academic work, please cite:
 
@@ -174,7 +187,7 @@ If you use this simulator in academic work, please cite:
 
 ---
 
-## 9. Future Extensions
+## 10. Future Extensions
 
 Potential directions:
 
