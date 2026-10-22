@@ -215,9 +215,14 @@ If you use this simulator in academic work, please cite:
    A. Nayak, F. Coltraro, M. Alberich-Carramiñana, C. Torras  
    *arXiv preprint arXiv:2609.29340*, 2026
 
----
 
-## 10. Future Extensions
+## 10. Acknowledgements
+
+F. Coltraro is supported by the NVIDIA Academic Grant Program through the use of a RTX PRO 6000 Blackwell GPU.
+
+
+
+## 11. Future Extensions
 
 Potential directions:
 
