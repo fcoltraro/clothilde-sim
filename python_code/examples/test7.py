@@ -21,7 +21,7 @@ X += 0.0002*np.random.randn(X.shape[0],3)
 
 self = Cloth(X, T); 
 dt = 1/60
-self.setSimulatorParameters(dt = dt, thck = 1.1, mu_s = 0.4, str = 1*1e-4, shr = 20*1e-4, tol = 0.005, kappa = 0.5*1e-4)
+self.setSimulatorParameters(dt = dt, thck = 1.25, mu_s = 0.4, str = 1*1e-4, shr = 20*1e-4, tol = 0.005, kappa = 0.5*1e-4, slf = 0)
 self.plotMesh()
 inds = [0,na-1,na*(nb-1),na*nb -1]; u = self.positions[inds]
 start_time = time.time()

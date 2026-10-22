@@ -1,7 +1,7 @@
 import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
-sys.path.append(parent_dir)
+sys.path.append(parent_dir + "/python_code")
 from implementation.Cloth import Cloth 
 from implementation.utils import quad_cylinder_mesh
 import numpy as np
@@ -14,7 +14,6 @@ X, T = quad_cylinder_mesh(R=0.11, H=0.22, h=0.016,f=1)
 X[:,2] += 0.35; 
 X += 0.0002*np.random.randn(X.shape[0],3) 
 self = Cloth(X,T); 
-dt = self.estimateTimeStep(L=2*np.pi*0.11)
 dt = 1/60
 self.plotMesh()
 self.setSimulatorParameters(dt = dt, delta= 0.1, kappa= 0.2*1e-4, tol = 0.0075, str = 0.0025*1e-4, shr = 2*1e-4, mu_s = 0.35, thck = 0.95, mu_f = 0.25)

@@ -32,13 +32,11 @@ u = X[inds_ctr]
 
 start_time = time.time()
 for i in range(tf):
-    print(i)
     self.simulate(u = u, control = inds_ctr)
 tf = int(4/dt); 
 inds_ctr = []
 u = self.positions[inds_ctr]; 
 for i in range(tf):
-    print(i)
     self.simulate(u = u, control = inds_ctr)
 
 print('Time:',time.time()-start_time)

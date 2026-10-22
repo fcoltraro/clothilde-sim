@@ -1,7 +1,6 @@
 import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
-sys.path.append(parent_dir)
 sys.path.append(parent_dir + "/python_code")
 from implementation.Cloth import Cloth 
 from implementation.utils import createRectangularMesh
@@ -9,7 +8,7 @@ import numpy as np
 #np.set_printoptions(threshold=sys.maxsize)
 import time
 
-from tqdm import tqdm
+#from tqdm import tqdm
 
 # Caida libre
 n = 27; na = n; nb = n
