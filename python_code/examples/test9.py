@@ -1,7 +1,7 @@
 import sys,os
 notebook_dir = os.getcwd()  # Gets current working directory
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
-sys.path.append(parent_dir)
+sys.path.append(parent_dir + "/python_code")
 from implementation.Cloth import Cloth
 from implementation.utils import createRectangularMesh, duplicate_node_pairs, weld_quad_mesh
 import numpy as np

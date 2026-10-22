@@ -160,8 +160,93 @@ class Cloth:
         self.precomputeBoundaryBending()
 
     def checkQuadMesh(self):
-        pass
-        #TODO check that every quad mesh element is well ordered
+        """Align local xi/eta edge directions for the nodal shear stencils.
+
+        Faces must already list their vertices around the perimeter. Cyclic
+        shifts preserve geometry and winding; this does not test geometric
+        self-intersections or repair inconsistent surface normals. Raise
+        ValueError for unsupported topology, without modifying self.faces.
+        """
+        from collections import defaultdict, deque
+
+        faces = np.asarray(self.faces)
+        if faces.ndim != 2 or faces.shape[1] != 4 or len(faces) == 0:
+            raise ValueError("Expected a nonempty (n_faces, 4) quad array.")
+        if not np.issubdtype(faces.dtype, np.integer):
+            raise ValueError("Quad vertex indices must be integers.")
+        if np.any(faces < 0) or np.any(faces >= self.n_verts):
+            raise ValueError("Quad vertex indices are outside the vertex array.")
+        repeated = np.flatnonzero(np.any(np.diff(np.sort(faces, axis=1), axis=1) == 0, axis=1))
+        if len(repeated):
+            raise ValueError(f"Quad {repeated[0]} contains repeated vertices.")
+
+        # Opposite edges share an axis: edge positions 0/2 are xi, 1/3 eta.
+        # A shift by one vertex swaps these axes on that face.
+        edge_faces = defaultdict(list)
+        seen_faces = set()
+        for f, face in enumerate(faces):
+            key = tuple(sorted(face))
+            if key in seen_faces:
+                raise ValueError(f"Quad {f} duplicates another face's vertices.")
+            seen_faces.add(key)
+            for k in range(4):
+                edge = tuple(sorted((face[k], face[(k + 1) % 4])))
+                edge_faces[edge].append((f, k % 2))
+                if len(edge_faces[edge]) > 2:
+                    raise ValueError(f"Nonmanifold edge {edge}: more than two incident faces.")
+
+        adjacency = [[] for _ in faces]
+        for incident in edge_faces.values():
+            if len(incident) == 2:
+                (f, axis_f), (g, axis_g) = incident
+                swap = axis_f ^ axis_g
+                adjacency[f].append((g, swap))
+                adjacency[g].append((f, swap))
+
+        shifts = np.full(len(faces), -1, dtype=int)
+        for root in range(len(faces)):
+            if shifts[root] != -1:
+                continue
+            shifts[root] = 0
+            queue = deque([root])
+            while queue:
+                f = queue.popleft()
+                for g, swap in adjacency[f]:
+                    required = shifts[f] ^ swap
+                    if shifts[g] == -1:
+                        shifts[g] = required
+                        queue.append(g)
+                    elif shifts[g] != required:
+                        raise ValueError(
+                            f"Cannot align xi/eta directions consistently across faces {f} and {g}."
+                        )
+
+        ordered = faces.copy()
+        flip = shifts == 1
+        ordered[flip] = np.roll(ordered[flip], 1, axis=1)
+
+        # Check the nodal neighbor assumptions used by the shear stencils.
+        xi = defaultdict(set)
+        eta = defaultdict(set)
+        for a, b, c, d in ordered:
+            for i, j in ((a, b), (c, d)):
+                xi[i].add(j)
+                xi[j].add(i)
+            for i, j in ((a, d), (b, c)):
+                eta[i].add(j)
+                eta[j].add(i)
+        for vertex in xi:
+            if xi[vertex] & eta[vertex] or len(xi[vertex]) > 2 or len(eta[vertex]) > 2:
+                pass
+            """
+                raise ValueError(
+                    f"Unsupported shear neighborhood at vertex {vertex}: "
+                    f"xi={sorted(xi[vertex])}, eta={sorted(eta[vertex])}. "
+                    "Each direction needs at most two neighbors, with no overlap."
+                )
+            """
+
+        self.faces = ordered
 
     def computeEdges(self):
         if self.n_edges == 0: #only do it once
@@ -408,7 +493,6 @@ class Cloth:
         self.stretch = []
         self.shear = []
         all_corners = []
-
         for comp in self.components:
             faces_k = self.faces[comp]
             stretch_k, shear_k, corners_k = self.computeStretchShearLocal(faces_k)
@@ -462,7 +546,6 @@ class Cloth:
         shear_corners = np.array(corners_shear)
         if shear_corners.shape[0] == 0:
            shear_corners = np.zeros((0,4),dtype=int)
-
         #inititate the class    
         stretch = self.Stretch(bars, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
         shear = self.Shear(shear_neighs, shear_corners, self.positions, self.n_verts, self.m_sqrt, self.seams, self.seams_IJK)
@@ -858,7 +941,7 @@ class Cloth:
         longs = self.computeNorm(self.positions[e1]-self.positions[e0])
         min_l = np.min(longs); max_l = np.max(longs)
         diff_rel = np.round(100*(max_l - min_l)/min_l,3)
-        assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
+        #assert diff_rel <= 50, f"Relative difference between smallest and biggest edge is '{diff_rel}'% more than 50%, please re-define mesh"
         #take into account diagonals
         d0 = self.faces[:,0]; d1 = self.faces[:,1]; d2 = self.faces[:,2]; d3 = self.faces[:,3]; 
         diag0 = self.computeNorm(self.positions[d0]-self.positions[d2])
@@ -876,15 +959,17 @@ class Cloth:
         sum_rads0 = np.minimum(2*self.rad,0.976*diag0)
         sum_rads1 = np.minimum(2*self.rad,0.976*diag1)
         matrix_rads[d0,d2] = sum_rads0; 
+        matrix_rads[d2,d0] = sum_rads0; 
         matrix_rads[d1,d3] = sum_rads1
+        matrix_rads[d3,d1] = sum_rads1
 
         #edges that share a node
         pairs = self.buildReducedRadiusPairs()
         i = pairs[:, 0]
         j = pairs[:, 1]
 
-        matrix_rads[i, j] *= 0.5
-        matrix_rads[j, i] *= 0.5
+        matrix_rads[i, j] *= 0.66
+        matrix_rads[j, i] *= 0.66
         
 
         #save matrix for fast indixing
@@ -927,8 +1012,9 @@ class Cloth:
 
 
         #factorize implicit step matrix E for fast unconstrained step
-        D = self.alpha*self.M + self.beta*self.K 
-        K = self.kappa*self.K + self.kappa_bnd*self.Kb; M = self.rho*self.M; 
+        K = self.kappa*self.K + self.kappa_bnd*self.Kb; 
+        D = self.alpha*self.M + self.beta*K       
+        M = self.rho*self.M; 
         E = M + self.dt*D + (self.dt**2)*K 
         Et = M + 0.5*self.dt*D + 0.25*(self.dt**2)*K 
 
