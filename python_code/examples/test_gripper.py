@@ -6,7 +6,7 @@ notebook_dir = os.getcwd()
 parent_dir = os.path.abspath(os.path.join(notebook_dir, '..'))
 sys.path.append(parent_dir + "/python_code")
 
-from implementation.Cloth0 import Cloth
+from implementation.Cloth import Cloth
 from implementation.utils import createRectangularMesh
 from implementation.Gripper import (
     SimulateGripper,
@@ -29,7 +29,6 @@ X[:, 2] += 0.7
 X += 0.0001 * np.random.randn(X.shape[0], 3)
 
 cloth = Cloth(X, T)
-dt = cloth.estimateTimeStep(L=0.8)
 # cloth.setSimulatorParameters(dt=dt, shr=0.1 * 0.0001, str=0.001 * 0.0001)
 cloth.setSimulatorParameters(dt=1/60,sub_steps=6, slf=0.01)
 # cloth.setSimulatorParameters(dt=1/60,sub_steps=8,mu_s=0.4,thck=1.05,kappa=1e-4)
