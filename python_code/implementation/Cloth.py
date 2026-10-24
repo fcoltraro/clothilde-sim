@@ -1543,7 +1543,7 @@ class Cloth:
                     #stretching
                     phi, lambda_str[k], err_k = self.projectConstraints(stretch_k,phi,u,control,
                                                                         lambda_str[k],self.str,0,0)   
-                error_str = max(error_str, err_k) 
+                    error_str = max(error_str, err_k) 
                 
                 
                 #self-collisions
